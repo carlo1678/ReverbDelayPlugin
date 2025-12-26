@@ -1,0 +1,22 @@
+# Build folders
+Builds/
+x64/
+Debug/
+Release/
+
+# Visual Studio files
+*.vcxproj.user
+*.suo
+*.sdf
+*.opensdf
+.vs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# JUCE auto-generated files
+JuceLibraryCode/
+
+# Don't ignore the .jucer project file
+!*.jucer
