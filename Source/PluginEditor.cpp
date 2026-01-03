@@ -165,20 +165,20 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
 
     bounds.removeFromTop(20);
 
-    // Middle row: TIME and FEEDBACK knobs
+    // Middle row: TIME, MODE dropdown, and FEEDBACK
     auto middleRow = bounds.removeFromTop(120);
-    int knobWidth = middleRow.getWidth() / 2;
+    int sectionWidth = middleRow.getWidth() / 3;
 
-    delayTimeSlider.setBounds(middleRow.removeFromLeft(knobWidth).reduced(20));
+    // TIME knob (left section)
+    delayTimeSlider.setBounds(middleRow.removeFromLeft(sectionWidth).reduced(20));
+
+    // MODE dropdown (center section)
+    auto modeSection = middleRow.removeFromLeft(sectionWidth);
+    modeSection.removeFromTop(25); // Space for "MODE" label
+    timeModeBox.setBounds(modeSection.withSizeKeepingCentre(120, 30));
+
+    // FEEDBACK knob (right section)
     delayFeedbackSlider.setBounds(middleRow.reduced(20));
-
-    bounds.removeFromTop(5);
-
-    // Time Mode dropdown (under TIME knob, left-aligned)
-    auto timeModeRow = bounds.removeFromTop(55);
-    auto timeModeArea = timeModeRow.removeFromLeft(knobWidth);
-    timeModeArea.removeFromTop(25); // Space for "MODE" label
-    timeModeBox.setBounds(timeModeArea.withSizeKeepingCentre(120, 30));
 
     bounds.removeFromTop(10);
 
