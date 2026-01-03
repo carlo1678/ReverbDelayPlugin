@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include <vector>
+#include "PitchShifter.h"
 
 class DelayLine
 {
@@ -14,7 +15,7 @@ public:
     void reset();
 
     // Processing
-    float processSample(float input, float delayTimeMs, float feedback);
+    float processSample(float input, float delayTimeMs, float feedback, float pitchShift = 0.0f, bool reverse = false);
 
     // Setters
     void setDelayTime(float delayMs);
@@ -28,4 +29,7 @@ private:
 
     float currentDelayTime = 500.0f;
     float currentFeedback = 0.3f;
+
+    PitchShifter pitchShifter;
+    std::vector<float> reverseBuffer;
 };

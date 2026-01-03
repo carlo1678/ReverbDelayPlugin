@@ -27,14 +27,12 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
 {
     // Get parameter pointers for fast access
     mixParam = parameters.getRawParameterValue("mix");
-    reverbDecayParam = parameters.getRawParameterValue("reverb_decay");
-    reverbPreDelayParam = parameters.getRawParameterValue("reverb_predelay");
-    reverbSizeParam = parameters.getRawParameterValue("reverb_size");
-    reverbDampingParam = parameters.getRawParameterValue("reverb_damping");
     delayTimeParam = parameters.getRawParameterValue("delay_time");
     delayFeedbackParam = parameters.getRawParameterValue("delay_feedback");
-    delayPitchParam = parameters.getRawParameterValue("delay_pitch");
     reverseDelayParam = parameters.getRawParameterValue("reverse_delay");
+    tempoSyncParam = parameters.getRawParameterValue("tempo_sync");
+    pingPongParam = parameters.getRawParameterValue("ping_pong");
+    timeModeParam = parameters.getRawParameterValue("time_mode");
 }
 
 
@@ -169,38 +167,137 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     // the samples and the outer loop is handling the channels.
     // Alternatively, you can process the samples with the channels
     // interleaved by keeping the same state.
-        // Get parameter values
-    float delayTime = delayTimeParam->load();
+        
+    
+// Get parameter values
     float feedback = delayFeedbackParam->load();
     float mix = mixParam->load() / 100.0f; // Convert 0-100 to 0-1
+    bool reverseEnabled = reverseDelayParam->load() > 0.5f;
+    bool pingPongEnabled = pingPongParam->load() > 0.5f;
 
-    // Process left channel
-    if (totalNumInputChannels > 0)
+    // Get time mode (0=Notes, 1=Time, 2=Triplet, 3=Dotted)
+    int timeMode = static_cast<int>(timeModeParam->load());
+
+    // Always tempo sync except in TIME mode
+    bool tempoSyncEnabled = (timeMode != 1);
+
+    // Get note division from TIME knob (0-4)
+    int noteDivision = static_cast<int>(delayTimeParam->load());
+
+    // Calculate delay time
+    float delayTime = 0.0f;
+
+    if (timeMode == 1) // TIME mode - use milliseconds directly
     {
+        // In TIME mode, map note divisions to millisecond ranges
+        // 0=100ms, 1=400ms, 2=800ms, 3=1400ms, 4=2000ms
+        switch (noteDivision)
+        {
+        case 0: delayTime = 100.0f; break;
+        case 1: delayTime = 400.0f; break;
+        case 2: delayTime = 800.0f; break;
+        case 3: delayTime = 1400.0f; break;
+        case 4: delayTime = 2000.0f; break;
+        default: delayTime = 800.0f; break;
+        }
+    }
+    else // NOTES, TRIPLET, or DOTTED modes - calculate based on tempo
+    {
+        double bpm = 120.0; // Default tempo when not synced
+
+        if (tempoSyncEnabled)
+        {
+            // Get tempo from host
+            auto playHead = getPlayHead();
+            if (playHead != nullptr)
+            {
+                juce::Optional<juce::AudioPlayHead::PositionInfo> posInfo = playHead->getPosition();
+                if (posInfo.hasValue() && posInfo->getBpm().hasValue())
+                {
+                    bpm = *posInfo->getBpm();
+                }
+            }
+        }
+
+        // Calculate base delay time
+        double beatsPerSecond = bpm / 60.0;
+        double millisecondsPerBeat = 1000.0 / beatsPerSecond;
+
+        float baseTime = 0.0f;
+        switch (noteDivision)
+        {
+        case 0: baseTime = millisecondsPerBeat / 4.0f; break;  // 1/16 note
+        case 1: baseTime = millisecondsPerBeat / 2.0f; break;  // 1/8 note
+        case 2: baseTime = millisecondsPerBeat; break;         // 1/4 note
+        case 3: baseTime = millisecondsPerBeat * 2.0f; break;  // 1/2 note
+        case 4: baseTime = millisecondsPerBeat * 4.0f; break;  // Whole note
+        default: baseTime = millisecondsPerBeat; break;
+        }
+
+        // Apply time mode multiplier
+        if (timeMode == 0) // NOTES mode
+        {
+            delayTime = baseTime;
+        }
+        else if (timeMode == 2) // TRIPLET mode (2/3 of base)
+        {
+            delayTime = baseTime * (2.0f / 3.0f);
+        }
+        else if (timeMode == 3) // DOTTED mode (1.5x base)
+        {
+            delayTime = baseTime * 1.5f;
+        }
+    }
+
+    // Process stereo channels
+    if (totalNumInputChannels >= 2)
+    {
+        auto* leftChannel = buffer.getWritePointer(0);
+        auto* rightChannel = buffer.getWritePointer(1);
+
+        if (pingPongEnabled)
+        {
+            // Ping pong mode: delays bounce between left and right
+            for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+            {
+                float leftInput = leftChannel[sample];
+                float rightInput = rightChannel[sample];
+
+                // Process delays (left delay goes to right, right delay goes to left)
+                float leftDelayed = delayLineLeft.processSample(rightInput, delayTime, feedback, 0.0f, reverseEnabled);
+                float rightDelayed = delayLineRight.processSample(leftInput, delayTime, feedback, 0.0f, reverseEnabled);
+
+                // Mix dry and wet (swapped for ping pong)
+                leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
+                rightChannel[sample] = rightInput * (1.0f - mix) + rightDelayed * mix;
+            }
+        }
+        else
+        {
+            // Normal mode: delays stay on same channel
+            for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+            {
+                float leftInput = leftChannel[sample];
+                float rightInput = rightChannel[sample];
+
+                float leftDelayed = delayLineLeft.processSample(leftInput, delayTime, feedback, 0.0f, reverseEnabled);
+                float rightDelayed = delayLineRight.processSample(rightInput, delayTime, feedback, 0.0f, reverseEnabled);
+
+                leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
+                rightChannel[sample] = rightInput * (1.0f - mix) + rightDelayed * mix;
+            }
+        }
+    }
+    else if (totalNumInputChannels > 0)
+    {
+        // Mono input - process left channel only
         auto* leftChannel = buffer.getWritePointer(0);
 
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
             float input = leftChannel[sample];
-            float delayed = delayLineLeft.processSample(input, delayTime, feedback);
-
-            // Mix dry and wet signal
+            float delayed = delayLineLeft.processSample(input, delayTime, feedback, 0.0f, reverseEnabled);
             leftChannel[sample] = input * (1.0f - mix) + delayed * mix;
-        }
-    }
-
-    // Process right channel
-    if (totalNumInputChannels > 1)
-    {
-        auto* rightChannel = buffer.getWritePointer(1);
-
-        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
-        {
-            float input = rightChannel[sample];
-            float delayed = delayLineRight.processSample(input, delayTime, feedback);
-
-            // Mix dry and wet signal
-            rightChannel[sample] = input * (1.0f - mix) + delayed * mix;
         }
     }
 
@@ -240,34 +337,36 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "mix", "Mix", 0.0f, 100.0f, 50.0f));
 
-    // Reverb Parameters
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        "reverb_decay", "Reverb Decay", 0.0f, 1.0f, 0.5f));
+    // Delay Time (note divisions)
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "delay_time", "Time",
+        juce::StringArray{ "1/16", "1/8", "1/4", "1/2", "Whole" }, 2)); // Default to 1/4
 
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        "reverb_predelay", "Reverb Pre-Delay", 0.0f, 100.0f, 0.0f));
+    // Time Mode (Notes, Time, Triplet, Dotted)
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "time_mode", "Time Mode",
+        juce::StringArray{ "Notes", "Time", "Triplet", "Dotted" }, 0)); // Default to Notes
 
+    // Delay Feedback
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        "reverb_size", "Reverb Size", 0.0f, 1.0f, 0.5f));
+        "delay_feedback", "Delay Feedback", 0.0f, 0.99f, 0.3f));
 
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        "reverb_damping", "Reverb Damping", 0.0f, 1.0f, 0.5f));
+    // Tempo Sync On/Off
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        "tempo_sync", "Tempo Sync", false));
 
-    // Delay Parameters
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        "delay_time", "Delay Time", 0.0f, 2000.0f, 500.0f));
 
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        "delay_feedback", "Delay Feedback", 0.0f, 0.95f, 0.3f));
-
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        "delay_pitch", "Delay Pitch", -12.0f, 12.0f, 0.0f));
-
+    // Reverse Delay
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "reverse_delay", "Reverse Delay", 0.0f, 1.0f, 0.0f));
 
+    // Ping Pong (stereo bouncing delay)
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        "ping_pong", "Ping Pong", false));
+
     return { params.begin(), params.end() };
 }
+
 
 
 //==============================================================================
@@ -275,4 +374,100 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new ReverbDelayPluginAudioProcessor();
+}
+
+//==============================================================================
+//==============================================================================
+// Preset Management
+
+juce::StringArray ReverbDelayPluginAudioProcessor::getPresetNames()
+{
+    return {
+        "Slap Back",
+        "Eighth Note",
+        "Quarter Note",
+        "Dotted Eighth",
+        "Long Tail",
+        "Short & Tight",
+        "Ping Pong",
+        "Tape Echo"
+    };
+}
+
+int ReverbDelayPluginAudioProcessor::getNumPresets()
+{
+    return getPresetNames().size();
+}
+
+void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
+{
+    switch (presetIndex)
+    {
+    case 0: // Slap Back - Quick single repeat
+        parameters.getParameter("mix")->setValueNotifyingHost(0.35f); // 35%
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.06f); // ~120ms
+        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.15f); // Low feedback
+        parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
+        break;
+
+    case 1: // Eighth Note - Synced 1/8
+        parameters.getParameter("mix")->setValueNotifyingHost(0.40f); // 40%
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.30f); // 30% = 1/8 note range
+        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.35f);
+        parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
+        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
+        break;
+
+    case 2: // Quarter Note - Synced 1/4
+        parameters.getParameter("mix")->setValueNotifyingHost(0.45f); // 45%
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.50f); // 50% = 1/4 note range
+        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.40f);
+        parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
+        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
+        break;
+
+    case 3: // Dotted Eighth (approximated with longer 1/8)
+        parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.35f); // 35% = between 1/8 and 1/4
+        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.45f);
+        parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
+        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
+        break;
+
+    case 4: // Long Tail - Ambient washy delays
+        parameters.getParameter("mix")->setValueNotifyingHost(0.60f); // 60%
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.50f); // ~1000ms
+        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.75f); // High feedback
+        parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
+        break;
+
+    case 5: // Short & Tight - Clean tight repeats
+        parameters.getParameter("mix")->setValueNotifyingHost(0.30f); // 30%
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.15f); // ~300ms
+        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.25f); // Low feedback
+        parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
+        break;
+
+    case 6: // Ping Pong - Stereo bouncing
+        parameters.getParameter("mix")->setValueNotifyingHost(0.55f); // 55%
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.30f); // 30% = 1/8 note range
+        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.50f);
+        parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
+        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
+        break;
+
+    case 7: // Tape Echo - Vintage tape delay sound
+        parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.35f); // ~700ms
+        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.55f); // Medium-high
+        parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
+        break;
+
+    default:
+        break;
+    }
 }

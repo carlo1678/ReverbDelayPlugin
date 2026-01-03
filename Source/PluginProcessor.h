@@ -10,6 +10,7 @@
 
 #include <JuceHeader.h>
 #include "DSP/DelayLine.h"
+#include "DSP/ReverbEngine.h"
 
 
 //==============================================================================
@@ -25,6 +26,14 @@ public:
 
     // Create parameter layout
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+    // Preset management
+    void loadPreset(int presetIndex);
+    juce::StringArray getPresetNames();
+    int getNumPresets();
+
+    // Parameter management (needs to be public for Editor access)
+    juce::AudioProcessorValueTreeState parameters;
 
 
     //==============================================================================
@@ -63,18 +72,16 @@ public:
 private:
     //==============================================================================
         // Parameter management
-    juce::AudioProcessorValueTreeState parameters;
+
 
     // Parameter pointers for fast access
     std::atomic<float>* mixParam = nullptr;
-    std::atomic<float>* reverbDecayParam = nullptr;
-    std::atomic<float>* reverbPreDelayParam = nullptr;
-    std::atomic<float>* reverbSizeParam = nullptr;
-    std::atomic<float>* reverbDampingParam = nullptr;
     std::atomic<float>* delayTimeParam = nullptr;
     std::atomic<float>* delayFeedbackParam = nullptr;
-    std::atomic<float>* delayPitchParam = nullptr;
     std::atomic<float>* reverseDelayParam = nullptr;
+    std::atomic<float>* tempoSyncParam = nullptr;
+    std::atomic<float>* pingPongParam = nullptr;
+    std::atomic<float>* timeModeParam = nullptr;
 
     // DSP Components
     DelayLine delayLineLeft;
