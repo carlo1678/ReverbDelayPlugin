@@ -75,6 +75,8 @@ private:
     juce::Slider mixSlider;
     juce::Slider delayTimeSlider;
     juce::Slider delayFeedbackSlider;
+    juce::Slider lowCutSlider;
+    juce::Slider highCutSlider;
 
     // Toggle buttons
     juce::ToggleButton reverseDelayButton;
@@ -87,11 +89,15 @@ private:
     juce::Label reverseDelayLabel;
     juce::Label tempoSyncLabel;
     juce::Label timeModeLabel;
+    juce::Label lowCutLabel;
+    juce::Label highCutLabel;
 
     // Attachments
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> mixAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> delayTimeAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> delayFeedbackAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> lowCutAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> highCutAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> reverseDelayAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> pingPongAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> timeModeAttachment;

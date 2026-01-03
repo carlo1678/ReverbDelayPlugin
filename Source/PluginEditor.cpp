@@ -103,6 +103,15 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     delayFeedbackAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
         audioProcessor.parameters, "delay_feedback", delayFeedbackSlider));
 
+    // Setup Low Cut Slider (rotary knob)
+    setupSlider(lowCutSlider, lowCutLabel, "LOW CUT", " Hz");
+    lowCutAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "low_cut", lowCutSlider));
+
+    // Setup High Cut Slider (rotary knob)
+    setupSlider(highCutSlider, highCutLabel, "HIGH CUT", " Hz");
+    highCutAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "high_cut", highCutSlider));
 
     // Setup Reverse Button
     reverseDelayButton.setButtonText("REVERSE");
@@ -134,6 +143,8 @@ ReverbDelayPluginAudioProcessorEditor::~ReverbDelayPluginAudioProcessorEditor()
     mixSlider.setLookAndFeel(nullptr);
     delayTimeSlider.setLookAndFeel(nullptr);
     delayFeedbackSlider.setLookAndFeel(nullptr);
+    lowCutSlider.setLookAndFeel(nullptr);
+    highCutSlider.setLookAndFeel(nullptr);
 }
 
 //==============================================================================
@@ -159,9 +170,19 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     bounds.removeFromTop(60);
     bounds.removeFromTop(10);
 
-    // Top row: Mix knob centered
+    // Top row: Low Cut, Mix, and High Cut knobs
     auto topRow = bounds.removeFromTop(120);
-    mixSlider.setBounds(topRow.withSizeKeepingCentre(110, 110));
+    int topSectionWidth = topRow.getWidth() / 3;
+
+    // Low Cut knob (left section)
+    lowCutSlider.setBounds(topRow.removeFromLeft(topSectionWidth).reduced(20));
+
+    // Mix knob (center section)
+    auto mixSection = topRow.removeFromLeft(topSectionWidth);
+    mixSlider.setBounds(mixSection.withSizeKeepingCentre(110, 110));
+
+    // High Cut knob (right section)
+    highCutSlider.setBounds(topRow.reduced(20));
 
     bounds.removeFromTop(20);
 

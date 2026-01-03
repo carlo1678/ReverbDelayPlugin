@@ -33,6 +33,8 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     tempoSyncParam = parameters.getRawParameterValue("tempo_sync");
     pingPongParam = parameters.getRawParameterValue("ping_pong");
     timeModeParam = parameters.getRawParameterValue("time_mode");
+    lowCutParam = parameters.getRawParameterValue("low_cut");
+    highCutParam = parameters.getRawParameterValue("high_cut");
 }
 
 
@@ -109,6 +111,25 @@ void ReverbDelayPluginAudioProcessor::prepareToPlay(double sampleRate, int sampl
     // Prepare delay lines (max 2 seconds)
     delayLineLeft.prepare(sampleRate, 2000);
     delayLineRight.prepare(sampleRate, 2000);
+
+    // Store sample rate for filter coefficient updates
+    lastSampleRate = sampleRate;
+
+    // Prepare filter chains
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate = sampleRate;
+    spec.maximumBlockSize = samplesPerBlock;
+    spec.numChannels = 1;
+
+    lowCutFilterLeft.prepare(spec);
+    lowCutFilterRight.prepare(spec);
+    highCutFilterLeft.prepare(spec);
+    highCutFilterRight.prepare(spec);
+
+    lowCutFilterLeft.reset();
+    lowCutFilterRight.reset();
+    highCutFilterLeft.reset();
+    highCutFilterRight.reset();
 }
 
 
@@ -174,6 +195,27 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     float mix = mixParam->load() / 100.0f; // Convert 0-100 to 0-1
     bool reverseEnabled = reverseDelayParam->load() > 0.5f;
     bool pingPongEnabled = pingPongParam->load() > 0.5f;
+    float lowCutFreq = lowCutParam->load();
+    float highCutFreq = highCutParam->load();
+
+    // Update filter coefficients (18 dB/octave = 3 cascaded 1-pole filters)
+    auto lowCutCoefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(lastSampleRate, lowCutFreq);
+    auto highCutCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(lastSampleRate, highCutFreq);
+
+    // Apply to all 3 stages for 18 dB/octave slope
+    *lowCutFilterLeft.get<0>().coefficients = *lowCutCoefficients;
+    *lowCutFilterLeft.get<1>().coefficients = *lowCutCoefficients;
+    *lowCutFilterLeft.get<2>().coefficients = *lowCutCoefficients;
+    *lowCutFilterRight.get<0>().coefficients = *lowCutCoefficients;
+    *lowCutFilterRight.get<1>().coefficients = *lowCutCoefficients;
+    *lowCutFilterRight.get<2>().coefficients = *lowCutCoefficients;
+
+    *highCutFilterLeft.get<0>().coefficients = *highCutCoefficients;
+    *highCutFilterLeft.get<1>().coefficients = *highCutCoefficients;
+    *highCutFilterLeft.get<2>().coefficients = *highCutCoefficients;
+    *highCutFilterRight.get<0>().coefficients = *highCutCoefficients;
+    *highCutFilterRight.get<1>().coefficients = *highCutCoefficients;
+    *highCutFilterRight.get<2>().coefficients = *highCutCoefficients;
 
     // Get time mode (0=Notes, 1=Time, 2=Triplet, 3=Dotted)
     int timeMode = static_cast<int>(timeModeParam->load());
@@ -267,6 +309,21 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 float leftDelayed = delayLineLeft.processSample(rightInput, delayTime, feedback, 0.0f, reverseEnabled);
                 float rightDelayed = delayLineRight.processSample(leftInput, delayTime, feedback, 0.0f, reverseEnabled);
 
+                // Apply filters to delayed signal
+                leftDelayed = lowCutFilterLeft.get<0>().processSample(leftDelayed);
+                leftDelayed = lowCutFilterLeft.get<1>().processSample(leftDelayed);
+                leftDelayed = lowCutFilterLeft.get<2>().processSample(leftDelayed);
+                leftDelayed = highCutFilterLeft.get<0>().processSample(leftDelayed);
+                leftDelayed = highCutFilterLeft.get<1>().processSample(leftDelayed);
+                leftDelayed = highCutFilterLeft.get<2>().processSample(leftDelayed);
+
+                rightDelayed = lowCutFilterRight.get<0>().processSample(rightDelayed);
+                rightDelayed = lowCutFilterRight.get<1>().processSample(rightDelayed);
+                rightDelayed = lowCutFilterRight.get<2>().processSample(rightDelayed);
+                rightDelayed = highCutFilterRight.get<0>().processSample(rightDelayed);
+                rightDelayed = highCutFilterRight.get<1>().processSample(rightDelayed);
+                rightDelayed = highCutFilterRight.get<2>().processSample(rightDelayed);
+
                 // Mix dry and wet (swapped for ping pong)
                 leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
                 rightChannel[sample] = rightInput * (1.0f - mix) + rightDelayed * mix;
@@ -283,6 +340,21 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 float leftDelayed = delayLineLeft.processSample(leftInput, delayTime, feedback, 0.0f, reverseEnabled);
                 float rightDelayed = delayLineRight.processSample(rightInput, delayTime, feedback, 0.0f, reverseEnabled);
 
+                // Apply filters to delayed signal
+                leftDelayed = lowCutFilterLeft.get<0>().processSample(leftDelayed);
+                leftDelayed = lowCutFilterLeft.get<1>().processSample(leftDelayed);
+                leftDelayed = lowCutFilterLeft.get<2>().processSample(leftDelayed);
+                leftDelayed = highCutFilterLeft.get<0>().processSample(leftDelayed);
+                leftDelayed = highCutFilterLeft.get<1>().processSample(leftDelayed);
+                leftDelayed = highCutFilterLeft.get<2>().processSample(leftDelayed);
+
+                rightDelayed = lowCutFilterRight.get<0>().processSample(rightDelayed);
+                rightDelayed = lowCutFilterRight.get<1>().processSample(rightDelayed);
+                rightDelayed = lowCutFilterRight.get<2>().processSample(rightDelayed);
+                rightDelayed = highCutFilterRight.get<0>().processSample(rightDelayed);
+                rightDelayed = highCutFilterRight.get<1>().processSample(rightDelayed);
+                rightDelayed = highCutFilterRight.get<2>().processSample(rightDelayed);
+
                 leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
                 rightChannel[sample] = rightInput * (1.0f - mix) + rightDelayed * mix;
             }
@@ -297,6 +369,15 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         {
             float input = leftChannel[sample];
             float delayed = delayLineLeft.processSample(input, delayTime, feedback, 0.0f, reverseEnabled);
+
+            // Apply filters to delayed signal
+            delayed = lowCutFilterLeft.get<0>().processSample(delayed);
+            delayed = lowCutFilterLeft.get<1>().processSample(delayed);
+            delayed = lowCutFilterLeft.get<2>().processSample(delayed);
+            delayed = highCutFilterLeft.get<0>().processSample(delayed);
+            delayed = highCutFilterLeft.get<1>().processSample(delayed);
+            delayed = highCutFilterLeft.get<2>().processSample(delayed);
+
             leftChannel[sample] = input * (1.0f - mix) + delayed * mix;
         }
     }
@@ -363,6 +444,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     // Ping Pong (stereo bouncing delay)
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         "ping_pong", "Ping Pong", false));
+
+    // Low Cut (highpass filter) - 20 Hz to 1000 Hz
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "low_cut", "Low Cut",
+        juce::NormalisableRange<float>(20.0f, 1000.0f, 1.0f, 0.3f),
+        20.0f));
+
+    // High Cut (lowpass filter) - 1000 Hz to 20000 Hz
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "high_cut", "High Cut",
+        juce::NormalisableRange<float>(1000.0f, 20000.0f, 1.0f, 0.3f),
+        20000.0f));
 
     return { params.begin(), params.end() };
 }

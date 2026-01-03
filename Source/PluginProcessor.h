@@ -82,10 +82,25 @@ private:
     std::atomic<float>* tempoSyncParam = nullptr;
     std::atomic<float>* pingPongParam = nullptr;
     std::atomic<float>* timeModeParam = nullptr;
+    std::atomic<float>* lowCutParam = nullptr;
+    std::atomic<float>* highCutParam = nullptr;
 
     // DSP Components
     DelayLine delayLineLeft;
     DelayLine delayLineRight;
+
+    // Filter state for delayed signal (18 dB/octave = 3 poles)
+    juce::dsp::ProcessorChain<
+        juce::dsp::IIR::Filter<float>,
+        juce::dsp::IIR::Filter<float>,
+        juce::dsp::IIR::Filter<float>> lowCutFilterLeft, lowCutFilterRight;
+
+    juce::dsp::ProcessorChain<
+        juce::dsp::IIR::Filter<float>,
+        juce::dsp::IIR::Filter<float>,
+        juce::dsp::IIR::Filter<float>> highCutFilterLeft, highCutFilterRight;
+
+    double lastSampleRate = 44100.0;
 
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbDelayPluginAudioProcessor)
