@@ -68,6 +68,9 @@ private:
     // Time Mode selector
     juce::ComboBox timeModeBox;
 
+    // Preset selector
+    juce::ComboBox presetBox;
+
     // Custom knob look and feel
     PedalKnobLookAndFeel pedalKnobLAF;
 
@@ -96,6 +99,7 @@ private:
     juce::Label wowLabel;
     juce::Label flutterLabel;
     juce::Label modLabel;  // "MOD" title for the mod box
+    juce::Label presetLabel;
 
     // Attachments
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> mixAttachment;

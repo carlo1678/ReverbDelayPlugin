@@ -98,6 +98,34 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     timeModeLabel.attachToComponent(&timeModeBox, false);
     addAndMakeVisible(timeModeLabel);
 
+    // Setup Preset selector
+    auto presetNames = audioProcessor.getPresetNames();
+    for (int i = 0; i < presetNames.size(); ++i)
+    {
+        presetBox.addItem(presetNames[i], i + 1); // IDs start at 1
+    }
+    presetBox.setSelectedId(0); // No preset selected by default
+    presetBox.setColour(juce::ComboBox::backgroundColourId, juce::Colours::black);
+    presetBox.setColour(juce::ComboBox::textColourId, juce::Colours::white);
+    presetBox.setColour(juce::ComboBox::outlineColourId, juce::Colours::white);
+    presetBox.setColour(juce::ComboBox::arrowColourId, juce::Colours::white);
+    presetBox.onChange = [this]
+    {
+        int selectedId = presetBox.getSelectedId();
+        if (selectedId > 0)
+        {
+            audioProcessor.loadPreset(selectedId - 1); // Convert ID back to index
+        }
+    };
+    addAndMakeVisible(presetBox);
+
+    presetLabel.setText("PRESET", juce::dontSendNotification);
+    presetLabel.setJustificationType(juce::Justification::centred);
+    presetLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    presetLabel.setFont(juce::Font(14.0f, juce::Font::bold));
+    presetLabel.attachToComponent(&presetBox, false);
+    addAndMakeVisible(presetLabel);
+
     // Setup Feedback Slider (rotary knob)
     setupSlider(delayFeedbackSlider, delayFeedbackLabel, "FEEDBACK", "");
     delayFeedbackAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
@@ -203,7 +231,13 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     bounds.reduce(30, 30);
 
     // Title space
-    bounds.removeFromTop(60);
+    auto titleArea = bounds.removeFromTop(60);
+
+    // Preset selector in top right corner
+    auto presetArea = titleArea.removeFromRight(200);
+    presetArea.removeFromTop(25); // Space for "PRESET" label
+    presetBox.setBounds(presetArea.withSizeKeepingCentre(180, 30));
+
     bounds.removeFromTop(10);
 
     // Top row: TIME - MIX - FEEDBACK

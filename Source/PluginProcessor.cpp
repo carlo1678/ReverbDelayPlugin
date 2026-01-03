@@ -488,14 +488,10 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 juce::StringArray ReverbDelayPluginAudioProcessor::getPresetNames()
 {
     return {
-        "Slap Back",
-        "Eighth Note",
-        "Quarter Note",
-        "Dotted Eighth",
-        "Long Tail",
-        "Short & Tight",
-        "Ping Pong",
-        "Tape Echo"
+        "Telephone",
+        "Underwater",
+        "Tape",
+        "Radio"
     };
 }
 
@@ -508,68 +504,60 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 {
     switch (presetIndex)
     {
-    case 0: // Slap Back - Quick single repeat
-        parameters.getParameter("mix")->setValueNotifyingHost(0.35f); // 35%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.06f); // ~120ms
-        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.15f); // Low feedback
-        parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
-        break;
-
-    case 1: // Eighth Note - Synced 1/8
+    case 0: // Telephone - Classic telephone effect with narrow frequency range
         parameters.getParameter("mix")->setValueNotifyingHost(0.40f); // 40%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.30f); // 30% = 1/8 note range
-        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.35f);
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.0f); // 1/16 note (index 0)
+        parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode (index 0)
+        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.30f); // Moderate feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
-        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
+        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.40f); // ~400 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.15f); // ~3000 Hz
+        parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
+        parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         break;
 
-    case 2: // Quarter Note - Synced 1/4
-        parameters.getParameter("mix")->setValueNotifyingHost(0.45f); // 45%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.50f); // 50% = 1/4 note range
-        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.40f);
-        parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
-        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
-        break;
-
-    case 3: // Dotted Eighth (approximated with longer 1/8)
-        parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.35f); // 35% = between 1/8 and 1/4
-        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.45f);
-        parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
-        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
-        break;
-
-    case 4: // Long Tail - Ambient washy delays
+    case 1: // Underwater - Deep, muffled underwater sound
         parameters.getParameter("mix")->setValueNotifyingHost(0.60f); // 60%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.50f); // ~1000ms
-        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.75f); // High feedback
-        parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
-        break;
-
-    case 5: // Short & Tight - Clean tight repeats
-        parameters.getParameter("mix")->setValueNotifyingHost(0.30f); // 30%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.15f); // ~300ms
-        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.25f); // Low feedback
-        parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
-        break;
-
-    case 6: // Ping Pong - Stereo bouncing
-        parameters.getParameter("mix")->setValueNotifyingHost(0.55f); // 55%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.30f); // 30% = 1/8 note range
-        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.50f);
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.5f); // 1/4 note (index 2)
+        parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
+        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.65f); // High feedback for swirly effect
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
-        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
+        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.0f); // 20 Hz (minimum - keep bass)
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.05f); // ~1500 Hz (heavy high cut)
+        parameters.getParameter("wow")->setValueNotifyingHost(0.30f); // 30%
+        parameters.getParameter("flutter")->setValueNotifyingHost(0.20f); // 20%
         break;
 
-    case 7: // Tape Echo - Vintage tape delay sound
+    case 2: // Tape - Classic cassette tape feel with wow and flutter
         parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.35f); // ~700ms
-        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.55f); // Medium-high
-        parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.25f); // 1/8 note (index 1)
+        parameters.getParameter("time_mode")->setValueNotifyingHost(0.33f); // Time mode (index 1)
+        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.50f); // Moderate feedback
+        parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off for vintage feel
+        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.06f); // ~80 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.40f); // ~8000 Hz
+        parameters.getParameter("wow")->setValueNotifyingHost(0.40f); // 40% (tape warble)
+        parameters.getParameter("flutter")->setValueNotifyingHost(0.30f); // 30%
+        break;
+
+    case 3: // Radio - Vintage radio broadcast sound
+        parameters.getParameter("mix")->setValueNotifyingHost(0.35f); // 35%
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.0f); // 1/16 note (index 0)
+        parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
+        parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.20f); // Low feedback
+        parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
+        parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.60f); // ~600 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.13f); // ~2800 Hz
+        parameters.getParameter("wow")->setValueNotifyingHost(0.10f); // 10% (slight)
+        parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         break;
 
     default:
