@@ -31,5 +31,7 @@ private:
     float currentFeedback = 0.3f;
 
     PitchShifter pitchShifter;
-    std::vector<float> reverseBuffer;
+
+    // Reverse delay tracking
+    int reversePhase = 0;  // Tracks position within the reversed segment
 };
