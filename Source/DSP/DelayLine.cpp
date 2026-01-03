@@ -41,10 +41,36 @@ void DelayLine::reset()
     pitchShifter.reset();
 }
 
-float DelayLine::processSample(float input, float delayTimeMs, float feedback, float pitchShift, bool reverse)
+float DelayLine::processSample(float input, float delayTimeMs, float feedback, float pitchShift, bool reverse, float wow, float flutter)
 {
+    // Apply wow and flutter modulation to delay time
+    // Wow: slow modulation (around 1 Hz), Flutter: fast modulation (around 8 Hz)
+    float wowFreq = 1.0f;      // 1 Hz for wow
+    float flutterFreq = 8.0f;  // 8 Hz for flutter
+
+    // Update LFO phases
+    wowPhase += (2.0f * juce::MathConstants<float>::pi * wowFreq) / static_cast<float>(sampleRate);
+    flutterPhase += (2.0f * juce::MathConstants<float>::pi * flutterFreq) / static_cast<float>(sampleRate);
+
+    // Wrap phases
+    if (wowPhase >= 2.0f * juce::MathConstants<float>::pi)
+        wowPhase -= 2.0f * juce::MathConstants<float>::pi;
+    if (flutterPhase >= 2.0f * juce::MathConstants<float>::pi)
+        flutterPhase -= 2.0f * juce::MathConstants<float>::pi;
+
+    // Generate LFO signals (sine waves)
+    float wowLFO = std::sin(wowPhase);
+    float flutterLFO = std::sin(flutterPhase);
+
+    // Apply modulation to delay time
+    // Wow/Flutter as percentage (0-100) converted to depth in milliseconds
+    float wowDepth = (wow / 100.0f) * 5.0f;        // Up to 5ms modulation for wow
+    float flutterDepth = (flutter / 100.0f) * 2.0f; // Up to 2ms modulation for flutter
+
+    float modulatedDelayTime = delayTimeMs + (wowLFO * wowDepth) + (flutterLFO * flutterDepth);
+
     // Calculate delay in samples
-    float delaySamples = (delayTimeMs / 1000.0f) * static_cast<float>(sampleRate);
+    float delaySamples = (modulatedDelayTime / 1000.0f) * static_cast<float>(sampleRate);
     int delaySamplesInt = static_cast<int>(delaySamples);
 
     // Ensure we have a valid delay time

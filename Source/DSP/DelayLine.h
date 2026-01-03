@@ -15,7 +15,7 @@ public:
     void reset();
 
     // Processing
-    float processSample(float input, float delayTimeMs, float feedback, float pitchShift = 0.0f, bool reverse = false);
+    float processSample(float input, float delayTimeMs, float feedback, float pitchShift = 0.0f, bool reverse = false, float wow = 0.0f, float flutter = 0.0f);
 
     // Setters
     void setDelayTime(float delayMs);
@@ -37,4 +37,8 @@ private:
     std::vector<float> reversePlaybackBuffer;  // Currently playing back (reversed)
     int reversePhase = 0;  // Current position within delay period (0 to delayTime)
     int lastSnapshotSize = 0;  // Size of the last captured snapshot
+
+    // Wow and Flutter LFO state
+    float wowPhase = 0.0f;      // Phase for wow LFO (0 to 2π)
+    float flutterPhase = 0.0f;  // Phase for flutter LFO (0 to 2π)
 };

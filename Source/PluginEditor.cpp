@@ -44,8 +44,8 @@ void ReverbDelayPluginAudioProcessorEditor::setupSlider(juce::Slider& slider, ju
 ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(ReverbDelayPluginAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
-    // Set window size
-    setSize(600, 450);
+    // Set window size (increased to accommodate Mod box)
+    setSize(750, 600);
 
     // Setup Mix Slider (rotary knob)
     setupSlider(mixSlider, mixLabel, "MIX", "%");
@@ -113,6 +113,23 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     highCutAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
         audioProcessor.parameters, "high_cut", highCutSlider));
 
+    // Setup Wow Slider (rotary knob)
+    setupSlider(wowSlider, wowLabel, "WOW", "%");
+    wowAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "wow", wowSlider));
+
+    // Setup Flutter Slider (rotary knob)
+    setupSlider(flutterSlider, flutterLabel, "FLUTTER", "%");
+    flutterAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "flutter", flutterSlider));
+
+    // Setup MOD label
+    modLabel.setText("MOD", juce::dontSendNotification);
+    modLabel.setJustificationType(juce::Justification::centred);
+    modLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    modLabel.setFont(juce::Font(18.0f, juce::Font::bold));
+    addAndMakeVisible(modLabel);
+
     // Setup Reverse Button
     reverseDelayButton.setButtonText("REVERSE");
     reverseDelayButton.setColour(juce::ToggleButton::textColourId, juce::Colours::white);
@@ -145,6 +162,8 @@ ReverbDelayPluginAudioProcessorEditor::~ReverbDelayPluginAudioProcessorEditor()
     delayFeedbackSlider.setLookAndFeel(nullptr);
     lowCutSlider.setLookAndFeel(nullptr);
     highCutSlider.setLookAndFeel(nullptr);
+    wowSlider.setLookAndFeel(nullptr);
+    flutterSlider.setLookAndFeel(nullptr);
 }
 
 //==============================================================================
@@ -159,6 +178,23 @@ void ReverbDelayPluginAudioProcessorEditor::paint(juce::Graphics& g)
     g.setColour(juce::Colours::white);
     g.setFont(juce::Font(32.0f, juce::Font::bold));
     g.drawText("The Lockboxx Effect", bounds.removeFromTop(60), juce::Justification::centred);
+
+    // Draw MOD box border
+    // Calculate mod box position (same logic as in resized())
+    auto modBoxBounds = getLocalBounds();
+    modBoxBounds.reduce(30, 30);
+    modBoxBounds.removeFromTop(60 + 10 + 120 + 20); // Skip title, top row spacing
+
+    auto middleRow = modBoxBounds.removeFromTop(180);
+    int middleSectionWidth = middleRow.getWidth() / 3;
+    middleRow.removeFromLeft(middleSectionWidth); // Skip Low Cut section
+
+    auto modBoxSection = middleRow.removeFromLeft(middleSectionWidth);
+    modBoxSection.reduce(10, 10); // Add some padding
+
+    // Draw rounded rectangle border for MOD box
+    g.setColour(juce::Colours::white);
+    g.drawRoundedRectangle(modBoxSection.toFloat(), 8.0f, 2.0f);
 }
 
 void ReverbDelayPluginAudioProcessorEditor::resized()
@@ -170,43 +206,62 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     bounds.removeFromTop(60);
     bounds.removeFromTop(10);
 
-    // Top row: Low Cut, Mix, and High Cut knobs
+    // Top row: TIME - MIX - FEEDBACK
     auto topRow = bounds.removeFromTop(120);
     int topSectionWidth = topRow.getWidth() / 3;
 
-    // Low Cut knob (left section)
-    lowCutSlider.setBounds(topRow.removeFromLeft(topSectionWidth).reduced(20));
+    // TIME knob (left section)
+    delayTimeSlider.setBounds(topRow.removeFromLeft(topSectionWidth).reduced(20));
 
-    // Mix knob (center section)
+    // MIX knob (center section)
     auto mixSection = topRow.removeFromLeft(topSectionWidth);
     mixSlider.setBounds(mixSection.withSizeKeepingCentre(110, 110));
 
-    // High Cut knob (right section)
-    highCutSlider.setBounds(topRow.reduced(20));
+    // FEEDBACK knob (right section)
+    delayFeedbackSlider.setBounds(topRow.reduced(20));
 
     bounds.removeFromTop(20);
 
-    // Middle row: TIME, MODE dropdown, and FEEDBACK
-    auto middleRow = bounds.removeFromTop(120);
-    int sectionWidth = middleRow.getWidth() / 3;
+    // Middle row: Low Cut - MOD BOX - High Cut
+    auto middleRow = bounds.removeFromTop(180);
+    int middleSectionWidth = middleRow.getWidth() / 3;
 
-    // TIME knob (left section)
-    delayTimeSlider.setBounds(middleRow.removeFromLeft(sectionWidth).reduced(20));
+    // Low Cut knob (left section)
+    auto lowCutSection = middleRow.removeFromLeft(middleSectionWidth);
+    lowCutSlider.setBounds(lowCutSection.removeFromTop(120).reduced(20));
 
-    // MODE dropdown (center section)
-    auto modeSection = middleRow.removeFromLeft(sectionWidth);
-    modeSection.removeFromTop(25); // Space for "MODE" label
-    timeModeBox.setBounds(modeSection.withSizeKeepingCentre(120, 30));
+    // MOD BOX (center section)
+    auto modBoxSection = middleRow.removeFromLeft(middleSectionWidth);
 
-    // FEEDBACK knob (right section)
-    delayFeedbackSlider.setBounds(middleRow.reduced(20));
+    // MOD title label at top of box
+    modLabel.setBounds(modBoxSection.removeFromTop(30));
+
+    // Mod knobs side by side inside the box
+    auto modKnobsArea = modBoxSection.removeFromTop(110);
+    int modKnobWidth = modKnobsArea.getWidth() / 2;
+
+    // Wow knob (left side of mod box)
+    wowSlider.setBounds(modKnobsArea.removeFromLeft(modKnobWidth).reduced(10));
+
+    // Flutter knob (right side of mod box)
+    flutterSlider.setBounds(modKnobsArea.reduced(10));
+
+    // High Cut knob (right section)
+    auto highCutSection = middleRow;
+    highCutSlider.setBounds(highCutSection.removeFromTop(120).reduced(20));
 
     bounds.removeFromTop(10);
 
-    // Bottom row: Controls - evenly spaced (2 buttons)
-    auto bottomRow = bounds.removeFromTop(70);
+    // MODE dropdown - centered below mod box
+    auto modeRow = bounds.removeFromTop(55);
+    modeRow.removeFromTop(25); // Space for "MODE" label
+    timeModeBox.setBounds(modeRow.withSizeKeepingCentre(120, 30));
 
-    int buttonWidth = bottomRow.getWidth() / 2; // Divide into 2 equal sections
+    bounds.removeFromTop(10);
+
+    // Bottom row: PING PONG - REVERSE
+    auto bottomRow = bounds.removeFromTop(70);
+    int buttonWidth = bottomRow.getWidth() / 2;
 
     // Ping Pong button (left half)
     auto pingPongButtonArea = bottomRow.removeFromLeft(buttonWidth);

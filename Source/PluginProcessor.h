@@ -84,6 +84,8 @@ private:
     std::atomic<float>* timeModeParam = nullptr;
     std::atomic<float>* lowCutParam = nullptr;
     std::atomic<float>* highCutParam = nullptr;
+    std::atomic<float>* wowParam = nullptr;
+    std::atomic<float>* flutterParam = nullptr;
 
     // DSP Components
     DelayLine delayLineLeft;

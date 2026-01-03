@@ -77,6 +77,8 @@ private:
     juce::Slider delayFeedbackSlider;
     juce::Slider lowCutSlider;
     juce::Slider highCutSlider;
+    juce::Slider wowSlider;
+    juce::Slider flutterSlider;
 
     // Toggle buttons
     juce::ToggleButton reverseDelayButton;
@@ -91,6 +93,9 @@ private:
     juce::Label timeModeLabel;
     juce::Label lowCutLabel;
     juce::Label highCutLabel;
+    juce::Label wowLabel;
+    juce::Label flutterLabel;
+    juce::Label modLabel;  // "MOD" title for the mod box
 
     // Attachments
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> mixAttachment;
@@ -98,6 +103,8 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> delayFeedbackAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> lowCutAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> highCutAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> wowAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> flutterAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> reverseDelayAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> pingPongAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> timeModeAttachment;

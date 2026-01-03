@@ -35,6 +35,8 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     timeModeParam = parameters.getRawParameterValue("time_mode");
     lowCutParam = parameters.getRawParameterValue("low_cut");
     highCutParam = parameters.getRawParameterValue("high_cut");
+    wowParam = parameters.getRawParameterValue("wow");
+    flutterParam = parameters.getRawParameterValue("flutter");
 }
 
 
@@ -197,6 +199,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     bool pingPongEnabled = pingPongParam->load() > 0.5f;
     float lowCutFreq = lowCutParam->load();
     float highCutFreq = highCutParam->load();
+    float wow = wowParam->load();
+    float flutter = flutterParam->load();
 
     // Update filter coefficients (18 dB/octave = 3 cascaded 1-pole filters)
     auto lowCutCoefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(lastSampleRate, lowCutFreq);
@@ -306,8 +310,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 float rightInput = rightChannel[sample];
 
                 // Process delays (left delay goes to right, right delay goes to left)
-                float leftDelayed = delayLineLeft.processSample(rightInput, delayTime, feedback, 0.0f, reverseEnabled);
-                float rightDelayed = delayLineRight.processSample(leftInput, delayTime, feedback, 0.0f, reverseEnabled);
+                float leftDelayed = delayLineLeft.processSample(rightInput, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
+                float rightDelayed = delayLineRight.processSample(leftInput, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
 
                 // Apply filters to delayed signal
                 leftDelayed = lowCutFilterLeft.get<0>().processSample(leftDelayed);
@@ -337,8 +341,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 float leftInput = leftChannel[sample];
                 float rightInput = rightChannel[sample];
 
-                float leftDelayed = delayLineLeft.processSample(leftInput, delayTime, feedback, 0.0f, reverseEnabled);
-                float rightDelayed = delayLineRight.processSample(rightInput, delayTime, feedback, 0.0f, reverseEnabled);
+                float leftDelayed = delayLineLeft.processSample(leftInput, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
+                float rightDelayed = delayLineRight.processSample(rightInput, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
 
                 // Apply filters to delayed signal
                 leftDelayed = lowCutFilterLeft.get<0>().processSample(leftDelayed);
@@ -368,7 +372,7 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
             float input = leftChannel[sample];
-            float delayed = delayLineLeft.processSample(input, delayTime, feedback, 0.0f, reverseEnabled);
+            float delayed = delayLineLeft.processSample(input, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
 
             // Apply filters to delayed signal
             delayed = lowCutFilterLeft.get<0>().processSample(delayed);
@@ -456,6 +460,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
         "high_cut", "High Cut",
         juce::NormalisableRange<float>(1000.0f, 20000.0f, 1.0f, 0.3f),
         20000.0f));
+
+    // Wow (slow pitch modulation) - 0 to 100%
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "wow", "Wow", 0.0f, 100.0f, 0.0f));
+
+    // Flutter (fast pitch modulation) - 0 to 100%
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "flutter", "Flutter", 0.0f, 100.0f, 0.0f));
 
     return { params.begin(), params.end() };
 }
