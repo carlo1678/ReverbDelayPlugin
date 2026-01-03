@@ -32,6 +32,9 @@ private:
 
     PitchShifter pitchShifter;
 
-    // Reverse delay tracking
-    int reversePhase = 0;  // Tracks position within the reversed segment
+    // Reverse delay - snapshot-based (double buffering)
+    std::vector<float> reverseCaptureBuffer;   // Currently capturing audio
+    std::vector<float> reversePlaybackBuffer;  // Currently playing back (reversed)
+    int reversePhase = 0;  // Current position within delay period (0 to delayTime)
+    int lastSnapshotSize = 0;  // Size of the last captured snapshot
 };
