@@ -84,20 +84,16 @@ float DelayLine::processSample(float input, float delayTimeMs, float feedback, f
 
     if (reverse)
     {
-        // SNAPSHOT-BASED REVERSE DELAY:
-        // Captures audio in rhythmic segments equal to delay time, then plays each segment reversed
+        // SNAPSHOT-BASED REVERSE DELAY (Murda Melodies style):
+        // Captures INPUT audio in real-time segments equal to delay time,
+        // reverses each segment, and plays it back to align with normal delay timing
 
-        // Step 1: Read the normally-delayed audio (what we'll capture)
-        int normalReadPos = writePosition - delaySamplesInt;
-        if (normalReadPos < 0)
-            normalReadPos += bufferSize;
-        float capturedSample = buffer[normalReadPos];
-
-        // Step 2: Store captured sample in capture buffer at current phase position
+        // Step 1: Capture the CLEAN INPUT (not the delayed signal!)
+        // This is the key fix - we capture INPUT, not delayed+feedback audio
         if (reversePhase < bufferSize)
-            reverseCaptureBuffer[reversePhase] = capturedSample;
+            reverseCaptureBuffer[reversePhase] = input;
 
-        // Step 3: Play back from playback buffer in REVERSE
+        // Step 2: Play back from playback buffer in REVERSE
         // Read from (lastSnapshotSize - 1 - reversePhase) to play the snapshot backwards
         if (lastSnapshotSize > 0 && reversePhase < lastSnapshotSize)
         {
@@ -112,13 +108,14 @@ float DelayLine::processSample(float input, float delayTimeMs, float feedback, f
             delayedSample = 0.0f;  // Silence during first snapshot period
         }
 
-        // Step 4: Increment phase
+        // Step 3: Increment phase
         reversePhase++;
 
-        // Step 5: When snapshot period completes, swap buffers and start new period
+        // Step 4: When snapshot period completes, swap buffers and start new period
         if (reversePhase >= delaySamplesInt)
         {
             // Copy capture buffer to playback buffer for next period
+            // This creates the reversed version that will play for the next cycle
             for (int i = 0; i < delaySamplesInt && i < bufferSize; ++i)
             {
                 reversePlaybackBuffer[i] = reverseCaptureBuffer[i];
@@ -126,6 +123,9 @@ float DelayLine::processSample(float input, float delayTimeMs, float feedback, f
 
             lastSnapshotSize = delaySamplesInt;  // Save snapshot size
             reversePhase = 0;  // Reset for next snapshot period
+
+            // Clear capture buffer for next snapshot
+            std::fill(reverseCaptureBuffer.begin(), reverseCaptureBuffer.end(), 0.0f);
         }
     }
     else
