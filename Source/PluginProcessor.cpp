@@ -506,7 +506,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
     {
     case 0: // Telephone - Classic telephone effect with narrow frequency range
         parameters.getParameter("mix")->setValueNotifyingHost(0.40f); // 40%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.0f); // 1/16 note (index 0)
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.5f); // 1/4 note (index 2)
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode (index 0)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.30f); // Moderate feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
@@ -534,7 +534,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 
     case 2: // Tape - Classic cassette tape feel with wow and flutter
         parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.25f); // 1/8 note (index 1)
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.5f); // 1/4 note (index 2)
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.33f); // Time mode (index 1)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.50f); // Moderate feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off for vintage feel
@@ -548,7 +548,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 
     case 3: // Radio - Vintage radio broadcast sound
         parameters.getParameter("mix")->setValueNotifyingHost(0.35f); // 35%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.0f); // 1/16 note (index 0)
+        parameters.getParameter("delay_time")->setValueNotifyingHost(0.5f); // 1/4 note (index 2)
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.20f); // Low feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
