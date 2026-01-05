@@ -104,6 +104,10 @@ private:
 
     double lastSampleRate = 44100.0;
 
+    // Track last filter frequencies to avoid unnecessary updates
+    float lastLowCutFreq = 20.0f;
+    float lastHighCutFreq = 20000.0f;
+
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbDelayPluginAudioProcessor)
 };

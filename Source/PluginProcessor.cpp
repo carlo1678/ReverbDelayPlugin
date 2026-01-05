@@ -202,24 +202,37 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     float wow = wowParam->load();
     float flutter = flutterParam->load();
 
-    // Update filter coefficients (18 dB/octave = 3 cascaded 1-pole filters)
-    auto lowCutCoefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(lastSampleRate, lowCutFreq);
-    auto highCutCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(lastSampleRate, highCutFreq);
+    // Only update filter coefficients when parameters actually change
+    // This prevents crackling/zipper noise from constant coefficient updates
+    const float freqChangeThreshold = 0.1f; // Only update if changed by more than 0.1 Hz
 
-    // Apply to all 3 stages for 18 dB/octave slope
-    *lowCutFilterLeft.get<0>().coefficients = *lowCutCoefficients;
-    *lowCutFilterLeft.get<1>().coefficients = *lowCutCoefficients;
-    *lowCutFilterLeft.get<2>().coefficients = *lowCutCoefficients;
-    *lowCutFilterRight.get<0>().coefficients = *lowCutCoefficients;
-    *lowCutFilterRight.get<1>().coefficients = *lowCutCoefficients;
-    *lowCutFilterRight.get<2>().coefficients = *lowCutCoefficients;
+    if (std::abs(lowCutFreq - lastLowCutFreq) > freqChangeThreshold)
+    {
+        auto lowCutCoefficients = juce::dsp::IIR::Coefficients<float>::makeHighPass(lastSampleRate, lowCutFreq);
 
-    *highCutFilterLeft.get<0>().coefficients = *highCutCoefficients;
-    *highCutFilterLeft.get<1>().coefficients = *highCutCoefficients;
-    *highCutFilterLeft.get<2>().coefficients = *highCutCoefficients;
-    *highCutFilterRight.get<0>().coefficients = *highCutCoefficients;
-    *highCutFilterRight.get<1>().coefficients = *highCutCoefficients;
-    *highCutFilterRight.get<2>().coefficients = *highCutCoefficients;
+        *lowCutFilterLeft.get<0>().coefficients = *lowCutCoefficients;
+        *lowCutFilterLeft.get<1>().coefficients = *lowCutCoefficients;
+        *lowCutFilterLeft.get<2>().coefficients = *lowCutCoefficients;
+        *lowCutFilterRight.get<0>().coefficients = *lowCutCoefficients;
+        *lowCutFilterRight.get<1>().coefficients = *lowCutCoefficients;
+        *lowCutFilterRight.get<2>().coefficients = *lowCutCoefficients;
+
+        lastLowCutFreq = lowCutFreq;
+    }
+
+    if (std::abs(highCutFreq - lastHighCutFreq) > freqChangeThreshold)
+    {
+        auto highCutCoefficients = juce::dsp::IIR::Coefficients<float>::makeLowPass(lastSampleRate, highCutFreq);
+
+        *highCutFilterLeft.get<0>().coefficients = *highCutCoefficients;
+        *highCutFilterLeft.get<1>().coefficients = *highCutCoefficients;
+        *highCutFilterLeft.get<2>().coefficients = *highCutCoefficients;
+        *highCutFilterRight.get<0>().coefficients = *highCutCoefficients;
+        *highCutFilterRight.get<1>().coefficients = *highCutCoefficients;
+        *highCutFilterRight.get<2>().coefficients = *highCutCoefficients;
+
+        lastHighCutFreq = highCutFreq;
+    }
 
     // Get time mode (0=Notes, 1=Time, 2=Triplet, 3=Dotted)
     int timeMode = static_cast<int>(timeModeParam->load());
