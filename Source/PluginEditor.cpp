@@ -178,6 +178,15 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     addAndMakeVisible(pingPongButton);
     pingPongAttachment.reset(new juce::AudioProcessorValueTreeState::ButtonAttachment(
         audioProcessor.parameters, "ping_pong", pingPongButton));
+
+    // Setup Pendulum Pan Button
+    pendulumPanButton.setButtonText("PENDULUM PAN");
+    pendulumPanButton.setColour(juce::ToggleButton::textColourId, juce::Colours::white);
+    pendulumPanButton.setColour(juce::ToggleButton::tickColourId, juce::Colours::white);
+    pendulumPanButton.setColour(juce::ToggleButton::tickDisabledColourId, juce::Colours::grey);
+    addAndMakeVisible(pendulumPanButton);
+    pendulumPanAttachment.reset(new juce::AudioProcessorValueTreeState::ButtonAttachment(
+        audioProcessor.parameters, "pendulum_pan", pendulumPanButton));
 }
 
 
@@ -293,14 +302,18 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
 
     bounds.removeFromTop(10);
 
-    // Bottom row: PING PONG - REVERSE
+    // Bottom row: PING PONG - PENDULUM PAN - REVERSE
     auto bottomRow = bounds.removeFromTop(70);
-    int buttonWidth = bottomRow.getWidth() / 2;
+    int buttonWidth = bottomRow.getWidth() / 3;
 
-    // Ping Pong button (left half)
+    // Ping Pong button (left third)
     auto pingPongButtonArea = bottomRow.removeFromLeft(buttonWidth);
     pingPongButton.setBounds(pingPongButtonArea.withSizeKeepingCentre(120, 28));
 
-    // Reverse button (right half)
+    // Pendulum Pan button (center third)
+    auto pendulumPanButtonArea = bottomRow.removeFromLeft(buttonWidth);
+    pendulumPanButton.setBounds(pendulumPanButtonArea.withSizeKeepingCentre(140, 28));
+
+    // Reverse button (right third)
     reverseDelayButton.setBounds(bottomRow.withSizeKeepingCentre(120, 28));
 }

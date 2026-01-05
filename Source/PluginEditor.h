@@ -86,6 +86,7 @@ private:
     // Toggle buttons
     juce::ToggleButton reverseDelayButton;
     juce::ToggleButton pingPongButton;
+    juce::ToggleButton pendulumPanButton;
 
     // Labels
     juce::Label mixLabel;
@@ -111,6 +112,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> flutterAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> reverseDelayAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> pingPongAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> pendulumPanAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> timeModeAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ReverbDelayPluginAudioProcessorEditor)

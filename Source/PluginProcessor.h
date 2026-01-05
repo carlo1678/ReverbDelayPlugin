@@ -86,6 +86,7 @@ private:
     std::atomic<float>* highCutParam = nullptr;
     std::atomic<float>* wowParam = nullptr;
     std::atomic<float>* flutterParam = nullptr;
+    std::atomic<float>* pendulumPanParam = nullptr;
 
     // DSP Components
     DelayLine delayLineLeft;
@@ -107,6 +108,9 @@ private:
     // Track last filter frequencies to avoid unnecessary updates
     float lastLowCutFreq = 20.0f;
     float lastHighCutFreq = 20000.0f;
+
+    // Pendulum panning state
+    float pendulumPhase = 0.0f;
 
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbDelayPluginAudioProcessor)
