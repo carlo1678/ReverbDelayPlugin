@@ -90,6 +90,7 @@ private:
     std::atomic<float>* noiseParam = nullptr;
     std::atomic<float>* phaserMixParam = nullptr;
     std::atomic<float>* phaserSpeedParam = nullptr;
+    std::atomic<float>* underwaterMixParam = nullptr;
 
     // DSP Components
     DelayLine delayLineLeft;
@@ -122,8 +123,13 @@ private:
     juce::AudioBuffer<float> telephoneNoiseSample;
     int telephoneNoiseReadPos = 0;
 
-    // Helper method to load telephone noise
+    // Underwater sound effect buffer and playback position
+    juce::AudioBuffer<float> underwaterSoundSample;
+    int underwaterSoundReadPos = 0;
+
+    // Helper methods to load audio samples
     void loadTelephoneNoise();
+    void loadUnderwaterSound();
 
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbDelayPluginAudioProcessor)

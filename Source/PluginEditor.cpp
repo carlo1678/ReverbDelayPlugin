@@ -130,11 +130,14 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         {
             audioProcessor.loadPreset(selectedId - 1); // Convert ID back to index
 
-            // Show/hide telephone-only controls
+            // Show/hide preset-specific controls
             bool isTelephonePreset = (selectedId == 1); // Telephone is first item (ID 1)
+            bool isUnderwaterPreset = (selectedId == 2); // Underwater is second item (ID 2)
+
             noiseSlider.setVisible(isTelephonePreset);
             phaserMixSlider.setVisible(isTelephonePreset);
             phaserSpeedSlider.setVisible(isTelephonePreset);
+            underwaterMixSlider.setVisible(isUnderwaterPreset);
 
             // Trigger layout update
             resized();
@@ -229,6 +232,12 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         audioProcessor.parameters, "phaser_speed", phaserSpeedSlider));
     phaserSpeedSlider.setVisible(false); // Hidden by default
 
+    // Setup Underwater Mix Slider (underwater preset only)
+    setupSlider(underwaterMixSlider, underwaterMixLabel, "UNDERWATER MIX", "%");
+    underwaterMixAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "underwater_mix", underwaterMixSlider));
+    underwaterMixSlider.setVisible(false); // Hidden by default
+
     // Setup Reset Button
     resetButton.setButtonText("RESET");
     resetButton.setColour(juce::TextButton::buttonColourId, juce::Colours::darkgrey);
@@ -251,14 +260,16 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         audioProcessor.parameters.getParameter("noise")->setValueNotifyingHost(0.0f);
         audioProcessor.parameters.getParameter("phaser_mix")->setValueNotifyingHost(0.0f);
         audioProcessor.parameters.getParameter("phaser_speed")->setValueNotifyingHost(1.0f / 10.0f);
+        audioProcessor.parameters.getParameter("underwater_mix")->setValueNotifyingHost(0.0f);
 
         // Reset preset selector
         presetBox.setSelectedId(0);
 
-        // Hide telephone-only controls
+        // Hide preset-specific controls
         noiseSlider.setVisible(false);
         phaserMixSlider.setVisible(false);
         phaserSpeedSlider.setVisible(false);
+        underwaterMixSlider.setVisible(false);
     };
     addAndMakeVisible(resetButton);
 }
@@ -278,6 +289,7 @@ ReverbDelayPluginAudioProcessorEditor::~ReverbDelayPluginAudioProcessorEditor()
     noiseSlider.setLookAndFeel(nullptr);
     phaserMixSlider.setLookAndFeel(nullptr);
     phaserSpeedSlider.setLookAndFeel(nullptr);
+    underwaterMixSlider.setLookAndFeel(nullptr);
 }
 
 //==============================================================================
@@ -401,6 +413,17 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
 
         // Phaser Speed knob (right third)
         phaserSpeedSlider.setBounds(telephoneRow.reduced(20));
+
+        bounds.removeFromTop(10);
+    }
+
+    // Underwater controls row (only visible when underwater preset is selected)
+    if (underwaterMixSlider.isVisible())
+    {
+        auto underwaterRow = bounds.removeFromTop(140);
+
+        // Underwater Mix knob (centered)
+        underwaterMixSlider.setBounds(underwaterRow.withSizeKeepingCentre(130, 120));
 
         bounds.removeFromTop(10);
     }

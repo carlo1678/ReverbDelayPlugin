@@ -41,9 +41,11 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     noiseParam = parameters.getRawParameterValue("noise");
     phaserMixParam = parameters.getRawParameterValue("phaser_mix");
     phaserSpeedParam = parameters.getRawParameterValue("phaser_speed");
+    underwaterMixParam = parameters.getRawParameterValue("underwater_mix");
 
-    // Load telephone noise sample
+    // Load audio samples
     loadTelephoneNoise();
+    loadUnderwaterSound();
 }
 
 
@@ -212,6 +214,7 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     float noise = noiseParam->load();
     float phaserMix = phaserMixParam->load() / 100.0f; // Convert 0-100 to 0-1
     float phaserSpeed = phaserSpeedParam->load();
+    float underwaterMix = underwaterMixParam->load() / 100.0f; // Convert 0-100 to 0-1
 
     // Only update filter coefficients when parameters actually change
     // This prevents crackling/zipper noise from constant coefficient updates
@@ -425,6 +428,24 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     rightDelayed = rightDelayed * (1.0f - phaserMix) + (rightDelayed * phaserLFO * phaserMix);
                 }
 
+                // Layer underwater sound effect (underwater preset only)
+                if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
+                {
+                    // Read from underwater sound buffer (loop if necessary)
+                    int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
+                    float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
+
+                    // Layer underwater sound with the input (not just delayed signal)
+                    // This creates the underwater ambience effect
+                    leftInput += underwaterSample * underwaterMix;
+                    rightInput += underwaterSample * underwaterMix;
+
+                    // Increment and wrap read position
+                    underwaterSoundReadPos++;
+                    if (underwaterSoundReadPos >= underwaterSoundSample.getNumSamples())
+                        underwaterSoundReadPos = 0;
+                }
+
                 // Mix dry and wet (swapped for ping pong)
                 leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
                 rightChannel[sample] = rightInput * (1.0f - mix) + rightDelayed * mix;
@@ -513,6 +534,24 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     // Apply phaser to delayed signal
                     leftDelayed = leftDelayed * (1.0f - phaserMix) + (leftDelayed * phaserLFO * phaserMix);
                     rightDelayed = rightDelayed * (1.0f - phaserMix) + (rightDelayed * phaserLFO * phaserMix);
+                }
+
+                // Layer underwater sound effect (underwater preset only)
+                if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
+                {
+                    // Read from underwater sound buffer (loop if necessary)
+                    int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
+                    float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
+
+                    // Layer underwater sound with the input (not just delayed signal)
+                    // This creates the underwater ambience effect
+                    leftInput += underwaterSample * underwaterMix;
+                    rightInput += underwaterSample * underwaterMix;
+
+                    // Increment and wrap read position
+                    underwaterSoundReadPos++;
+                    if (underwaterSoundReadPos >= underwaterSoundSample.getNumSamples())
+                        underwaterSoundReadPos = 0;
                 }
 
                 leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
@@ -644,6 +683,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
         juce::NormalisableRange<float>(0.1f, 10.0f, 0.1f, 0.3f),
         1.0f));
 
+    // Underwater Mix (underwater preset only) - 0 to 100%
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "underwater_mix", "Underwater Mix", 0.0f, 100.0f, 0.0f));
+
     return { params.begin(), params.end() };
 }
 
@@ -693,7 +736,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         break;
 
-    case 1: // Underwater - Deep, muffled underwater sound
+    case 1: // Underwater - Deep, muffled underwater sound with bubbles
         parameters.getParameter("mix")->setValueNotifyingHost(0.60f); // 60%
         parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
@@ -703,8 +746,9 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("low_cut")->setValueNotifyingHost(0.0f); // 20 Hz (minimum - keep bass)
         parameters.getParameter("high_cut")->setValueNotifyingHost(0.05f); // ~1500 Hz (heavy high cut)
-        parameters.getParameter("wow")->setValueNotifyingHost(0.30f); // 30%
-        parameters.getParameter("flutter")->setValueNotifyingHost(0.20f); // 20%
+        parameters.getParameter("wow")->setValueNotifyingHost(0.05f); // 5%
+        parameters.getParameter("flutter")->setValueNotifyingHost(0.05f); // 5%
+        parameters.getParameter("underwater_mix")->setValueNotifyingHost(0.50f); // 50% underwater sound
         break;
 
     case 2: // Tape - Classic cassette tape feel with wow and flutter
@@ -805,5 +849,72 @@ void ReverbDelayPluginAudioProcessor::loadTelephoneNoise()
     else
     {
         DBG("Failed to create reader for telephone noise file");
+    }
+}
+
+//==============================================================================
+// Load underwater sound effect sample
+void ReverbDelayPluginAudioProcessor::loadUnderwaterSound()
+{
+    // Get the path to the underwater sound effect file
+    juce::File pluginDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory();
+
+    // Try multiple possible locations for the sound file
+    juce::Array<juce::File> searchPaths;
+
+    // Path 1: Same directory as executable
+    searchPaths.add(pluginDir.getChildFile("underwater sound effect.wav"));
+
+    // Path 2: One level up (for development builds)
+    searchPaths.add(pluginDir.getParentDirectory().getChildFile("test_audio").getChildFile("underwater sound effect.wav"));
+
+    // Path 3: Two levels up (for some build configurations)
+    searchPaths.add(pluginDir.getParentDirectory().getParentDirectory().getChildFile("test_audio").getChildFile("underwater sound effect.wav"));
+
+    // Path 4: Check in source directory (for development)
+    searchPaths.add(juce::File::getCurrentWorkingDirectory().getChildFile("test_audio").getChildFile("underwater sound effect.wav"));
+
+    juce::File soundFile;
+    for (auto& path : searchPaths)
+    {
+        if (path.existsAsFile())
+        {
+            soundFile = path;
+            break;
+        }
+    }
+
+    if (!soundFile.existsAsFile())
+    {
+        DBG("Underwater sound effect file not found in any search path");
+        return;
+    }
+
+    // Create audio format manager and register basic formats
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+
+    // Create reader for the WAV file
+    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(soundFile));
+
+    if (reader != nullptr)
+    {
+        // Allocate buffer with same number of channels and length as the file
+        underwaterSoundSample.setSize(static_cast<int>(reader->numChannels),
+                                      static_cast<int>(reader->lengthInSamples));
+
+        // Read the entire file into the buffer
+        reader->read(&underwaterSoundSample,
+                     0,
+                     static_cast<int>(reader->lengthInSamples),
+                     0,
+                     true,
+                     true);
+
+        DBG("Underwater sound loaded successfully: " + juce::String(reader->lengthInSamples) + " samples");
+    }
+    else
+    {
+        DBG("Failed to create reader for underwater sound effect file");
     }
 }
