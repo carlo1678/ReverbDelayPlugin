@@ -38,6 +38,14 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     wowParam = parameters.getRawParameterValue("wow");
     flutterParam = parameters.getRawParameterValue("flutter");
     pendulumPanParam = parameters.getRawParameterValue("pendulum_pan");
+    noiseParam = parameters.getRawParameterValue("noise");
+    phaserMixParam = parameters.getRawParameterValue("phaser_mix");
+    phaserSpeedParam = parameters.getRawParameterValue("phaser_speed");
+    underwaterMixParam = parameters.getRawParameterValue("underwater_mix");
+
+    // Load audio samples
+    loadTelephoneNoise();
+    loadUnderwaterSound();
 }
 
 
@@ -203,6 +211,10 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     float wow = wowParam->load();
     float flutter = flutterParam->load();
     bool pendulumPanEnabled = pendulumPanParam->load() > 0.5f;
+    float noise = noiseParam->load();
+    float phaserMix = phaserMixParam->load() / 100.0f; // Convert 0-100 to 0-1
+    float phaserSpeed = phaserSpeedParam->load();
+    float underwaterMix = underwaterMixParam->load() / 100.0f; // Convert 0-100 to 0-1
 
     // Only update filter coefficients when parameters actually change
     // This prevents crackling/zipper noise from constant coefficient updates
@@ -242,28 +254,22 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     // Always tempo sync except in TIME mode
     bool tempoSyncEnabled = (timeMode != 1);
 
-    // Get note division from TIME knob (0-4)
-    int noteDivision = static_cast<int>(delayTimeParam->load());
+    // Get delay time value (0-15000)
+    float delayTimeValue = delayTimeParam->load();
 
     // Calculate delay time
     float delayTime = 0.0f;
 
     if (timeMode == 1) // TIME mode - use milliseconds directly
     {
-        // In TIME mode, map note divisions to millisecond ranges
-        // 0=100ms, 1=400ms, 2=800ms, 3=1400ms, 4=2000ms
-        switch (noteDivision)
-        {
-        case 0: delayTime = 100.0f; break;
-        case 1: delayTime = 400.0f; break;
-        case 2: delayTime = 800.0f; break;
-        case 3: delayTime = 1400.0f; break;
-        case 4: delayTime = 2000.0f; break;
-        default: delayTime = 800.0f; break;
-        }
+        delayTime = delayTimeValue; // Direct milliseconds (0-15000)
     }
     else // NOTES, TRIPLET, or DOTTED modes - calculate based on tempo
     {
+        // Map continuous value (0-15000) to note division (0-4)
+        int noteDivision = static_cast<int>(delayTimeValue / 3000.0f);
+        if (noteDivision > 4) noteDivision = 4;
+
         double bpm = 120.0; // Default tempo when not synced
 
         if (tempoSyncEnabled)
@@ -385,6 +391,61 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     rightDelayed *= rightGain;
                 }
 
+                // Apply noise/static (telephone effect) using loaded audio sample
+                if (noise > 0.0f && telephoneNoiseSample.getNumSamples() > 0)
+                {
+                    float noiseAmount = noise / 100.0f; // 0-1 range
+
+                    // Read from telephone noise buffer (loop if necessary)
+                    int noiseChannel = telephoneNoiseSample.getNumChannels() > 0 ? 0 : 0;
+                    float noiseSample = telephoneNoiseSample.getSample(noiseChannel, telephoneNoiseReadPos);
+
+                    // Apply noise amount scaling
+                    noiseSample *= noiseAmount;
+
+                    leftDelayed += noiseSample;
+                    rightDelayed += noiseSample;
+
+                    // Increment and wrap read position
+                    telephoneNoiseReadPos++;
+                    if (telephoneNoiseReadPos >= telephoneNoiseSample.getNumSamples())
+                        telephoneNoiseReadPos = 0;
+                }
+
+                // Apply phaser effect (amplitude modulation for call fading effect)
+                if (phaserMix > 0.0f)
+                {
+                    // Update phaser phase
+                    phaserPhase += (2.0f * juce::MathConstants<float>::pi * phaserSpeed) / static_cast<float>(lastSampleRate);
+                    if (phaserPhase >= 2.0f * juce::MathConstants<float>::pi)
+                        phaserPhase -= 2.0f * juce::MathConstants<float>::pi;
+
+                    // Generate LFO (0.5 to 1.0 range for fading in/out effect)
+                    float phaserLFO = 0.5f + (std::sin(phaserPhase) * 0.5f);
+
+                    // Apply phaser to delayed signal
+                    leftDelayed = leftDelayed * (1.0f - phaserMix) + (leftDelayed * phaserLFO * phaserMix);
+                    rightDelayed = rightDelayed * (1.0f - phaserMix) + (rightDelayed * phaserLFO * phaserMix);
+                }
+
+                // Layer underwater sound effect (underwater preset only)
+                if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
+                {
+                    // Read from underwater sound buffer (loop if necessary)
+                    int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
+                    float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
+
+                    // Layer underwater sound with the input (not just delayed signal)
+                    // This creates the underwater ambience effect
+                    leftInput += underwaterSample * underwaterMix;
+                    rightInput += underwaterSample * underwaterMix;
+
+                    // Increment and wrap read position
+                    underwaterSoundReadPos++;
+                    if (underwaterSoundReadPos >= underwaterSoundSample.getNumSamples())
+                        underwaterSoundReadPos = 0;
+                }
+
                 // Mix dry and wet (swapped for ping pong)
                 leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
                 rightChannel[sample] = rightInput * (1.0f - mix) + rightDelayed * mix;
@@ -436,6 +497,61 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     // Apply panning to delayed signal
                     leftDelayed *= leftGain;
                     rightDelayed *= rightGain;
+                }
+
+                // Apply noise/static (telephone effect) using loaded audio sample
+                if (noise > 0.0f && telephoneNoiseSample.getNumSamples() > 0)
+                {
+                    float noiseAmount = noise / 100.0f; // 0-1 range
+
+                    // Read from telephone noise buffer (loop if necessary)
+                    int noiseChannel = telephoneNoiseSample.getNumChannels() > 0 ? 0 : 0;
+                    float noiseSample = telephoneNoiseSample.getSample(noiseChannel, telephoneNoiseReadPos);
+
+                    // Apply noise amount scaling
+                    noiseSample *= noiseAmount;
+
+                    leftDelayed += noiseSample;
+                    rightDelayed += noiseSample;
+
+                    // Increment and wrap read position
+                    telephoneNoiseReadPos++;
+                    if (telephoneNoiseReadPos >= telephoneNoiseSample.getNumSamples())
+                        telephoneNoiseReadPos = 0;
+                }
+
+                // Apply phaser effect (amplitude modulation for call fading effect)
+                if (phaserMix > 0.0f)
+                {
+                    // Update phaser phase
+                    phaserPhase += (2.0f * juce::MathConstants<float>::pi * phaserSpeed) / static_cast<float>(lastSampleRate);
+                    if (phaserPhase >= 2.0f * juce::MathConstants<float>::pi)
+                        phaserPhase -= 2.0f * juce::MathConstants<float>::pi;
+
+                    // Generate LFO (0.5 to 1.0 range for fading in/out effect)
+                    float phaserLFO = 0.5f + (std::sin(phaserPhase) * 0.5f);
+
+                    // Apply phaser to delayed signal
+                    leftDelayed = leftDelayed * (1.0f - phaserMix) + (leftDelayed * phaserLFO * phaserMix);
+                    rightDelayed = rightDelayed * (1.0f - phaserMix) + (rightDelayed * phaserLFO * phaserMix);
+                }
+
+                // Layer underwater sound effect (underwater preset only)
+                if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
+                {
+                    // Read from underwater sound buffer (loop if necessary)
+                    int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
+                    float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
+
+                    // Layer underwater sound with the input (not just delayed signal)
+                    // This creates the underwater ambience effect
+                    leftInput += underwaterSample * underwaterMix;
+                    rightInput += underwaterSample * underwaterMix;
+
+                    // Increment and wrap read position
+                    underwaterSoundReadPos++;
+                    if (underwaterSoundReadPos >= underwaterSoundSample.getNumSamples())
+                        underwaterSoundReadPos = 0;
                 }
 
                 leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
@@ -501,10 +617,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "mix", "Mix", 0.0f, 100.0f, 50.0f));
 
-    // Delay Time (note divisions)
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+    // Delay Time - can be note divisions (0-4) or milliseconds (0-15000) depending on mode
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "delay_time", "Time",
-        juce::StringArray{ "1/16", "1/8", "1/4", "1/2", "Whole" }, 2)); // Default to 1/4
+        juce::NormalisableRange<float>(0.0f, 15000.0f, 1.0f, 0.3f),
+        500.0f)); // Default to 500ms
 
     // Time Mode (Notes, Time, Triplet, Dotted)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -552,6 +669,24 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         "pendulum_pan", "Pendulum Pan", false));
 
+    // Noise/Static (telephone preset only) - 0 to 100%
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "noise", "Noise", 0.0f, 100.0f, 0.0f));
+
+    // Phaser Mix (telephone preset only) - 0 to 100%
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "phaser_mix", "Phaser Mix", 0.0f, 100.0f, 0.0f));
+
+    // Phaser Speed/Frequency (telephone preset only) - 0.1 to 10 Hz
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "phaser_speed", "Phaser Speed",
+        juce::NormalisableRange<float>(0.1f, 10.0f, 0.1f, 0.3f),
+        1.0f));
+
+    // Underwater Mix (underwater preset only) - 0 to 100%
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "underwater_mix", "Underwater Mix", 0.0f, 100.0f, 0.0f));
+
     return { params.begin(), params.end() };
 }
 
@@ -589,21 +724,21 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
     {
     case 0: // Telephone - Classic telephone effect with narrow frequency range
         parameters.getParameter("mix")->setValueNotifyingHost(0.40f); // 40%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.5f); // 1/4 note (index 2)
+        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode (index 0)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.30f); // Moderate feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(0.40f); // ~400 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.15f); // ~3000 Hz
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.276f); // 290 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.173f); // 4000 Hz
         parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         break;
 
-    case 1: // Underwater - Deep, muffled underwater sound
+    case 1: // Underwater - Deep, muffled underwater sound with bubbles
         parameters.getParameter("mix")->setValueNotifyingHost(0.60f); // 60%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.5f); // 1/4 note (index 2)
+        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.65f); // High feedback for swirly effect
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
@@ -611,13 +746,14 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("low_cut")->setValueNotifyingHost(0.0f); // 20 Hz (minimum - keep bass)
         parameters.getParameter("high_cut")->setValueNotifyingHost(0.05f); // ~1500 Hz (heavy high cut)
-        parameters.getParameter("wow")->setValueNotifyingHost(0.30f); // 30%
-        parameters.getParameter("flutter")->setValueNotifyingHost(0.20f); // 20%
+        parameters.getParameter("wow")->setValueNotifyingHost(0.05f); // 5%
+        parameters.getParameter("flutter")->setValueNotifyingHost(0.05f); // 5%
+        parameters.getParameter("underwater_mix")->setValueNotifyingHost(0.50f); // 50% underwater sound
         break;
 
     case 2: // Tape - Classic cassette tape feel with wow and flutter
         parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.5f); // 1/4 note (index 2)
+        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.33f); // Time mode (index 1)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.50f); // Moderate feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off for vintage feel
@@ -631,7 +767,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 
     case 3: // Radio - Vintage radio broadcast sound
         parameters.getParameter("mix")->setValueNotifyingHost(0.35f); // 35%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.5f); // 1/4 note (index 2)
+        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.20f); // Low feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
@@ -645,5 +781,140 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 
     default:
         break;
+    }
+}
+
+//==============================================================================
+// Load telephone noise sample
+void ReverbDelayPluginAudioProcessor::loadTelephoneNoise()
+{
+    // Get the path to the telephone noise file
+    // The file is located in test_audio/telephone noise.wav relative to the plugin binary
+    juce::File pluginDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory();
+
+    // Try multiple possible locations for the noise file
+    juce::Array<juce::File> searchPaths;
+
+    // Path 1: Same directory as executable
+    searchPaths.add(pluginDir.getChildFile("telephone noise.wav"));
+
+    // Path 2: One level up (for development builds)
+    searchPaths.add(pluginDir.getParentDirectory().getChildFile("test_audio").getChildFile("telephone noise.wav"));
+
+    // Path 3: Two levels up (for some build configurations)
+    searchPaths.add(pluginDir.getParentDirectory().getParentDirectory().getChildFile("test_audio").getChildFile("telephone noise.wav"));
+
+    // Path 4: Check in source directory (for development)
+    searchPaths.add(juce::File::getCurrentWorkingDirectory().getChildFile("test_audio").getChildFile("telephone noise.wav"));
+
+    juce::File noiseFile;
+    for (auto& path : searchPaths)
+    {
+        if (path.existsAsFile())
+        {
+            noiseFile = path;
+            break;
+        }
+    }
+
+    if (!noiseFile.existsAsFile())
+    {
+        DBG("Telephone noise file not found in any search path");
+        return;
+    }
+
+    // Create audio format manager and register basic formats
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+
+    // Create reader for the WAV file
+    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(noiseFile));
+
+    if (reader != nullptr)
+    {
+        // Allocate buffer with same number of channels and length as the file
+        telephoneNoiseSample.setSize(static_cast<int>(reader->numChannels),
+                                      static_cast<int>(reader->lengthInSamples));
+
+        // Read the entire file into the buffer
+        reader->read(&telephoneNoiseSample,
+                     0,
+                     static_cast<int>(reader->lengthInSamples),
+                     0,
+                     true,
+                     true);
+
+        DBG("Telephone noise loaded successfully: " + juce::String(reader->lengthInSamples) + " samples");
+    }
+    else
+    {
+        DBG("Failed to create reader for telephone noise file");
+    }
+}
+
+//==============================================================================
+// Load underwater sound effect sample
+void ReverbDelayPluginAudioProcessor::loadUnderwaterSound()
+{
+    // Get the path to the underwater sound effect file
+    juce::File pluginDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory();
+
+    // Try multiple possible locations for the sound file
+    juce::Array<juce::File> searchPaths;
+
+    // Path 1: Same directory as executable
+    searchPaths.add(pluginDir.getChildFile("underwater sound effect.wav"));
+
+    // Path 2: One level up (for development builds)
+    searchPaths.add(pluginDir.getParentDirectory().getChildFile("test_audio").getChildFile("underwater sound effect.wav"));
+
+    // Path 3: Two levels up (for some build configurations)
+    searchPaths.add(pluginDir.getParentDirectory().getParentDirectory().getChildFile("test_audio").getChildFile("underwater sound effect.wav"));
+
+    // Path 4: Check in source directory (for development)
+    searchPaths.add(juce::File::getCurrentWorkingDirectory().getChildFile("test_audio").getChildFile("underwater sound effect.wav"));
+
+    juce::File soundFile;
+    for (auto& path : searchPaths)
+    {
+        if (path.existsAsFile())
+        {
+            soundFile = path;
+            break;
+        }
+    }
+
+    if (!soundFile.existsAsFile())
+    {
+        DBG("Underwater sound effect file not found in any search path");
+        return;
+    }
+
+    // Create audio format manager and register basic formats
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+
+    // Create reader for the WAV file
+    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(soundFile));
+
+    if (reader != nullptr)
+    {
+        // Allocate buffer with same number of channels and length as the file
+        underwaterSoundSample.setSize(static_cast<int>(reader->numChannels),
+                                      static_cast<int>(reader->lengthInSamples));
+
+        // Read the entire file into the buffer
+        reader->read(&underwaterSoundSample,
+                     0,
+                     static_cast<int>(reader->lengthInSamples),
+                     0,
+                     true,
+                     true);
+
+        DBG("Underwater sound loaded successfully: " + juce::String(reader->lengthInSamples) + " samples");
+    }
+    else
+    {
+        DBG("Failed to create reader for underwater sound effect file");
     }
 }

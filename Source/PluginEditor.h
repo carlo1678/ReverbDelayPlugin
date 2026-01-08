@@ -82,11 +82,18 @@ private:
     juce::Slider highCutSlider;
     juce::Slider wowSlider;
     juce::Slider flutterSlider;
+    juce::Slider noiseSlider;
+    juce::Slider phaserMixSlider;
+    juce::Slider phaserSpeedSlider;
+    juce::Slider underwaterMixSlider;
 
     // Toggle buttons
     juce::ToggleButton reverseDelayButton;
     juce::ToggleButton pingPongButton;
     juce::ToggleButton pendulumPanButton;
+
+    // Reset button
+    juce::TextButton resetButton;
 
     // Labels
     juce::Label mixLabel;
@@ -101,6 +108,10 @@ private:
     juce::Label flutterLabel;
     juce::Label modLabel;  // "MOD" title for the mod box
     juce::Label presetLabel;
+    juce::Label noiseLabel;
+    juce::Label phaserMixLabel;
+    juce::Label phaserSpeedLabel;
+    juce::Label underwaterMixLabel;
 
     // Attachments
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> mixAttachment;
@@ -110,6 +121,10 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> highCutAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> wowAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> flutterAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> noiseAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> phaserMixAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> phaserSpeedAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> underwaterMixAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> reverseDelayAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> pingPongAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> pendulumPanAttachment;

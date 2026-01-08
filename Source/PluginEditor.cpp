@@ -44,36 +44,43 @@ void ReverbDelayPluginAudioProcessorEditor::setupSlider(juce::Slider& slider, ju
 ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(ReverbDelayPluginAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
-    // Set window size (increased to accommodate Mod box)
-    setSize(750, 600);
+    // Set window size (increased to accommodate telephone controls)
+    setSize(750, 750);
 
     // Setup Mix Slider (rotary knob)
     setupSlider(mixSlider, mixLabel, "MIX", "%");
     mixAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
         audioProcessor.parameters, "mix", mixSlider));
 
-    // Setup Delay Time Slider (rotary knob)
+    // Setup Delay Time Slider (rotary knob) - shows note divisions or milliseconds
     setupSlider(delayTimeSlider, delayTimeLabel, "TIME", "");
     delayTimeAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
         audioProcessor.parameters, "delay_time", delayTimeSlider));
 
-    // Setup Delay Time Slider (rotary knob) - now shows note divisions
-    setupSlider(delayTimeSlider, delayTimeLabel, "TIME", "");
-    delayTimeAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
-        audioProcessor.parameters, "delay_time", delayTimeSlider));
-
-    // Configure to show note division text instead of numbers
-    delayTimeSlider.textFromValueFunction = [](double value)
+    // Configure to show note division or milliseconds based on time mode
+    delayTimeSlider.textFromValueFunction = [this](double value)
         {
-            int index = static_cast<int>(value);
-            switch (index)
+            // Get current time mode (0=Notes, 1=Time, 2=Triplet, 3=Dotted)
+            int timeMode = static_cast<int>(audioProcessor.parameters.getRawParameterValue("time_mode")->load());
+
+            if (timeMode == 1) // TIME mode - show milliseconds
             {
-            case 0: return juce::String("1/16");
-            case 1: return juce::String("1/8");
-            case 2: return juce::String("1/4");
-            case 3: return juce::String("1/2");
-            case 4: return juce::String("Whole");
-            default: return juce::String("1/4");
+                return juce::String(static_cast<int>(value)) + " ms";
+            }
+            else // NOTES/TRIPLET/DOTTED modes - show note division
+            {
+                int index = static_cast<int>(value / 3000.0f);
+                if (index > 4) index = 4;
+
+                switch (index)
+                {
+                case 0: return juce::String("1/16");
+                case 1: return juce::String("1/8");
+                case 2: return juce::String("1/4");
+                case 3: return juce::String("1/2");
+                case 4: return juce::String("Whole");
+                default: return juce::String("1/4");
+                }
             }
         };
 
@@ -87,6 +94,13 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     timeModeBox.setColour(juce::ComboBox::textColourId, juce::Colours::white);
     timeModeBox.setColour(juce::ComboBox::outlineColourId, juce::Colours::white);
     timeModeBox.setColour(juce::ComboBox::arrowColourId, juce::Colours::white);
+
+    // Update delay time slider text when mode changes
+    timeModeBox.onChange = [this]
+    {
+        delayTimeSlider.updateText(); // Force update of the displayed text
+    };
+
     addAndMakeVisible(timeModeBox);
     timeModeAttachment.reset(new juce::AudioProcessorValueTreeState::ComboBoxAttachment(
         audioProcessor.parameters, "time_mode", timeModeBox));
@@ -115,6 +129,18 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         if (selectedId > 0)
         {
             audioProcessor.loadPreset(selectedId - 1); // Convert ID back to index
+
+            // Show/hide preset-specific controls
+            bool isTelephonePreset = (selectedId == 1); // Telephone is first item (ID 1)
+            bool isUnderwaterPreset = (selectedId == 2); // Underwater is second item (ID 2)
+
+            noiseSlider.setVisible(isTelephonePreset);
+            phaserMixSlider.setVisible(isTelephonePreset);
+            phaserSpeedSlider.setVisible(isTelephonePreset);
+            underwaterMixSlider.setVisible(isUnderwaterPreset);
+
+            // Trigger layout update
+            resized();
         }
     };
     addAndMakeVisible(presetBox);
@@ -187,6 +213,65 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     addAndMakeVisible(pendulumPanButton);
     pendulumPanAttachment.reset(new juce::AudioProcessorValueTreeState::ButtonAttachment(
         audioProcessor.parameters, "pendulum_pan", pendulumPanButton));
+
+    // Setup Noise Slider (telephone preset only)
+    setupSlider(noiseSlider, noiseLabel, "NOISE", "%");
+    noiseAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "noise", noiseSlider));
+    noiseSlider.setVisible(false); // Hidden by default
+
+    // Setup Phaser Mix Slider (telephone preset only)
+    setupSlider(phaserMixSlider, phaserMixLabel, "PHASER MIX", "%");
+    phaserMixAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "phaser_mix", phaserMixSlider));
+    phaserMixSlider.setVisible(false); // Hidden by default
+
+    // Setup Phaser Speed Slider (telephone preset only)
+    setupSlider(phaserSpeedSlider, phaserSpeedLabel, "PHASER SPEED", " Hz");
+    phaserSpeedAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "phaser_speed", phaserSpeedSlider));
+    phaserSpeedSlider.setVisible(false); // Hidden by default
+
+    // Setup Underwater Mix Slider (underwater preset only)
+    setupSlider(underwaterMixSlider, underwaterMixLabel, "UNDERWATER MIX", "%");
+    underwaterMixAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "underwater_mix", underwaterMixSlider));
+    underwaterMixSlider.setVisible(false); // Hidden by default
+
+    // Setup Reset Button
+    resetButton.setButtonText("RESET");
+    resetButton.setColour(juce::TextButton::buttonColourId, juce::Colours::darkgrey);
+    resetButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    resetButton.onClick = [this]
+    {
+        // Reset all parameters to default values
+        audioProcessor.parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
+        audioProcessor.parameters.getParameter("delay_time")->setValueNotifyingHost(500.0f / 15000.0f);
+        audioProcessor.parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes
+        audioProcessor.parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.30f);
+        audioProcessor.parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("low_cut")->setValueNotifyingHost(0.0f); // 20 Hz
+        audioProcessor.parameters.getParameter("high_cut")->setValueNotifyingHost(1.0f); // 20000 Hz
+        audioProcessor.parameters.getParameter("wow")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("flutter")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("pendulum_pan")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("noise")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("phaser_mix")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("phaser_speed")->setValueNotifyingHost(1.0f / 10.0f);
+        audioProcessor.parameters.getParameter("underwater_mix")->setValueNotifyingHost(0.0f);
+
+        // Reset preset selector
+        presetBox.setSelectedId(0);
+
+        // Hide preset-specific controls
+        noiseSlider.setVisible(false);
+        phaserMixSlider.setVisible(false);
+        phaserSpeedSlider.setVisible(false);
+        underwaterMixSlider.setVisible(false);
+    };
+    addAndMakeVisible(resetButton);
 }
 
 
@@ -201,6 +286,10 @@ ReverbDelayPluginAudioProcessorEditor::~ReverbDelayPluginAudioProcessorEditor()
     highCutSlider.setLookAndFeel(nullptr);
     wowSlider.setLookAndFeel(nullptr);
     flutterSlider.setLookAndFeel(nullptr);
+    noiseSlider.setLookAndFeel(nullptr);
+    phaserMixSlider.setLookAndFeel(nullptr);
+    phaserSpeedSlider.setLookAndFeel(nullptr);
+    underwaterMixSlider.setLookAndFeel(nullptr);
 }
 
 //==============================================================================
@@ -242,10 +331,18 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     // Title space
     auto titleArea = bounds.removeFromTop(60);
 
-    // Preset selector in top right corner
-    auto presetArea = titleArea.removeFromRight(200);
-    presetArea.removeFromTop(25); // Space for "PRESET" label
-    presetBox.setBounds(presetArea.withSizeKeepingCentre(180, 30));
+    // Preset selector and reset button in top right corner
+    auto topRightArea = titleArea.removeFromRight(320);
+    topRightArea.removeFromTop(25); // Space for "PRESET" label
+
+    // Reset button on the left
+    auto resetButtonArea = topRightArea.removeFromLeft(110);
+    resetButton.setBounds(resetButtonArea.withSizeKeepingCentre(90, 30));
+
+    topRightArea.removeFromLeft(10); // Spacing
+
+    // Preset selector on the right
+    presetBox.setBounds(topRightArea.withSizeKeepingCentre(180, 30));
 
     bounds.removeFromTop(10);
 
@@ -301,6 +398,35 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     timeModeBox.setBounds(modeRow.withSizeKeepingCentre(120, 30));
 
     bounds.removeFromTop(10);
+
+    // Telephone controls row (only visible when telephone preset is selected)
+    if (noiseSlider.isVisible())
+    {
+        auto telephoneRow = bounds.removeFromTop(140);
+        int telephoneKnobWidth = telephoneRow.getWidth() / 3;
+
+        // Noise knob (left third)
+        noiseSlider.setBounds(telephoneRow.removeFromLeft(telephoneKnobWidth).reduced(20));
+
+        // Phaser Mix knob (center third)
+        phaserMixSlider.setBounds(telephoneRow.removeFromLeft(telephoneKnobWidth).reduced(20));
+
+        // Phaser Speed knob (right third)
+        phaserSpeedSlider.setBounds(telephoneRow.reduced(20));
+
+        bounds.removeFromTop(10);
+    }
+
+    // Underwater controls row (only visible when underwater preset is selected)
+    if (underwaterMixSlider.isVisible())
+    {
+        auto underwaterRow = bounds.removeFromTop(140);
+
+        // Underwater Mix knob (centered)
+        underwaterMixSlider.setBounds(underwaterRow.withSizeKeepingCentre(130, 120));
+
+        bounds.removeFromTop(10);
+    }
 
     // Bottom row: PING PONG - PENDULUM PAN - REVERSE
     auto bottomRow = bounds.removeFromTop(70);
