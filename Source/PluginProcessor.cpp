@@ -38,6 +38,9 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     wowParam = parameters.getRawParameterValue("wow");
     flutterParam = parameters.getRawParameterValue("flutter");
     pendulumPanParam = parameters.getRawParameterValue("pendulum_pan");
+    noiseParam = parameters.getRawParameterValue("noise");
+    phaserMixParam = parameters.getRawParameterValue("phaser_mix");
+    phaserSpeedParam = parameters.getRawParameterValue("phaser_speed");
 }
 
 
@@ -203,6 +206,9 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     float wow = wowParam->load();
     float flutter = flutterParam->load();
     bool pendulumPanEnabled = pendulumPanParam->load() > 0.5f;
+    float noise = noiseParam->load();
+    float phaserMix = phaserMixParam->load() / 100.0f; // Convert 0-100 to 0-1
+    float phaserSpeed = phaserSpeedParam->load();
 
     // Only update filter coefficients when parameters actually change
     // This prevents crackling/zipper noise from constant coefficient updates
@@ -379,6 +385,31 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     rightDelayed *= rightGain;
                 }
 
+                // Apply noise/static (telephone effect)
+                if (noise > 0.0f)
+                {
+                    float noiseAmount = (noise / 100.0f) * 0.1f;
+                    float noiseSample = (random.nextFloat() * 2.0f - 1.0f) * noiseAmount;
+                    leftDelayed += noiseSample;
+                    rightDelayed += noiseSample;
+                }
+
+                // Apply phaser effect (amplitude modulation for call fading effect)
+                if (phaserMix > 0.0f)
+                {
+                    // Update phaser phase
+                    phaserPhase += (2.0f * juce::MathConstants<float>::pi * phaserSpeed) / static_cast<float>(lastSampleRate);
+                    if (phaserPhase >= 2.0f * juce::MathConstants<float>::pi)
+                        phaserPhase -= 2.0f * juce::MathConstants<float>::pi;
+
+                    // Generate LFO (0.5 to 1.0 range for fading in/out effect)
+                    float phaserLFO = 0.5f + (std::sin(phaserPhase) * 0.5f);
+
+                    // Apply phaser to delayed signal
+                    leftDelayed = leftDelayed * (1.0f - phaserMix) + (leftDelayed * phaserLFO * phaserMix);
+                    rightDelayed = rightDelayed * (1.0f - phaserMix) + (rightDelayed * phaserLFO * phaserMix);
+                }
+
                 // Mix dry and wet (swapped for ping pong)
                 leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
                 rightChannel[sample] = rightInput * (1.0f - mix) + rightDelayed * mix;
@@ -430,6 +461,31 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     // Apply panning to delayed signal
                     leftDelayed *= leftGain;
                     rightDelayed *= rightGain;
+                }
+
+                // Apply noise/static (telephone effect)
+                if (noise > 0.0f)
+                {
+                    float noiseAmount = (noise / 100.0f) * 0.1f; // Scale to reasonable level
+                    float noiseSample = (random.nextFloat() * 2.0f - 1.0f) * noiseAmount;
+                    leftDelayed += noiseSample;
+                    rightDelayed += noiseSample;
+                }
+
+                // Apply phaser effect (amplitude modulation for call fading effect)
+                if (phaserMix > 0.0f)
+                {
+                    // Update phaser phase
+                    phaserPhase += (2.0f * juce::MathConstants<float>::pi * phaserSpeed) / static_cast<float>(lastSampleRate);
+                    if (phaserPhase >= 2.0f * juce::MathConstants<float>::pi)
+                        phaserPhase -= 2.0f * juce::MathConstants<float>::pi;
+
+                    // Generate LFO (0.5 to 1.0 range for fading in/out effect)
+                    float phaserLFO = 0.5f + (std::sin(phaserPhase) * 0.5f);
+
+                    // Apply phaser to delayed signal
+                    leftDelayed = leftDelayed * (1.0f - phaserMix) + (leftDelayed * phaserLFO * phaserMix);
+                    rightDelayed = rightDelayed * (1.0f - phaserMix) + (rightDelayed * phaserLFO * phaserMix);
                 }
 
                 leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
@@ -546,6 +602,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     // Pendulum Panning (auto-pan synced to BPM)
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         "pendulum_pan", "Pendulum Pan", false));
+
+    // Noise/Static (telephone preset only) - 0 to 100%
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "noise", "Noise", 0.0f, 100.0f, 0.0f));
+
+    // Phaser Mix (telephone preset only) - 0 to 100%
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "phaser_mix", "Phaser Mix", 0.0f, 100.0f, 0.0f));
+
+    // Phaser Speed/Frequency (telephone preset only) - 0.1 to 10 Hz
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "phaser_speed", "Phaser Speed",
+        juce::NormalisableRange<float>(0.1f, 10.0f, 0.1f, 0.3f),
+        1.0f));
 
     return { params.begin(), params.end() };
 }

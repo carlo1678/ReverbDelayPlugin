@@ -44,8 +44,8 @@ void ReverbDelayPluginAudioProcessorEditor::setupSlider(juce::Slider& slider, ju
 ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(ReverbDelayPluginAudioProcessor& p)
     : AudioProcessorEditor(&p), audioProcessor(p)
 {
-    // Set window size (increased to accommodate Mod box)
-    setSize(750, 600);
+    // Set window size (increased to accommodate telephone controls)
+    setSize(750, 750);
 
     // Setup Mix Slider (rotary knob)
     setupSlider(mixSlider, mixLabel, "MIX", "%");
@@ -129,6 +129,15 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         if (selectedId > 0)
         {
             audioProcessor.loadPreset(selectedId - 1); // Convert ID back to index
+
+            // Show/hide telephone-only controls
+            bool isTelephonePreset = (selectedId == 1); // Telephone is first item (ID 1)
+            noiseSlider.setVisible(isTelephonePreset);
+            phaserMixSlider.setVisible(isTelephonePreset);
+            phaserSpeedSlider.setVisible(isTelephonePreset);
+
+            // Trigger layout update
+            resized();
         }
     };
     addAndMakeVisible(presetBox);
@@ -201,6 +210,57 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     addAndMakeVisible(pendulumPanButton);
     pendulumPanAttachment.reset(new juce::AudioProcessorValueTreeState::ButtonAttachment(
         audioProcessor.parameters, "pendulum_pan", pendulumPanButton));
+
+    // Setup Noise Slider (telephone preset only)
+    setupSlider(noiseSlider, noiseLabel, "NOISE", "%");
+    noiseAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "noise", noiseSlider));
+    noiseSlider.setVisible(false); // Hidden by default
+
+    // Setup Phaser Mix Slider (telephone preset only)
+    setupSlider(phaserMixSlider, phaserMixLabel, "PHASER MIX", "%");
+    phaserMixAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "phaser_mix", phaserMixSlider));
+    phaserMixSlider.setVisible(false); // Hidden by default
+
+    // Setup Phaser Speed Slider (telephone preset only)
+    setupSlider(phaserSpeedSlider, phaserSpeedLabel, "PHASER SPEED", " Hz");
+    phaserSpeedAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "phaser_speed", phaserSpeedSlider));
+    phaserSpeedSlider.setVisible(false); // Hidden by default
+
+    // Setup Reset Button
+    resetButton.setButtonText("RESET");
+    resetButton.setColour(juce::TextButton::buttonColourId, juce::Colours::darkgrey);
+    resetButton.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+    resetButton.onClick = [this]
+    {
+        // Reset all parameters to default values
+        audioProcessor.parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
+        audioProcessor.parameters.getParameter("delay_time")->setValueNotifyingHost(500.0f / 15000.0f);
+        audioProcessor.parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes
+        audioProcessor.parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.30f);
+        audioProcessor.parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("low_cut")->setValueNotifyingHost(0.0f); // 20 Hz
+        audioProcessor.parameters.getParameter("high_cut")->setValueNotifyingHost(1.0f); // 20000 Hz
+        audioProcessor.parameters.getParameter("wow")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("flutter")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("pendulum_pan")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("noise")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("phaser_mix")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("phaser_speed")->setValueNotifyingHost(1.0f / 10.0f);
+
+        // Reset preset selector
+        presetBox.setSelectedId(0);
+
+        // Hide telephone-only controls
+        noiseSlider.setVisible(false);
+        phaserMixSlider.setVisible(false);
+        phaserSpeedSlider.setVisible(false);
+    };
+    addAndMakeVisible(resetButton);
 }
 
 
@@ -215,6 +275,9 @@ ReverbDelayPluginAudioProcessorEditor::~ReverbDelayPluginAudioProcessorEditor()
     highCutSlider.setLookAndFeel(nullptr);
     wowSlider.setLookAndFeel(nullptr);
     flutterSlider.setLookAndFeel(nullptr);
+    noiseSlider.setLookAndFeel(nullptr);
+    phaserMixSlider.setLookAndFeel(nullptr);
+    phaserSpeedSlider.setLookAndFeel(nullptr);
 }
 
 //==============================================================================
@@ -256,10 +319,18 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     // Title space
     auto titleArea = bounds.removeFromTop(60);
 
-    // Preset selector in top right corner
-    auto presetArea = titleArea.removeFromRight(200);
-    presetArea.removeFromTop(25); // Space for "PRESET" label
-    presetBox.setBounds(presetArea.withSizeKeepingCentre(180, 30));
+    // Preset selector and reset button in top right corner
+    auto topRightArea = titleArea.removeFromRight(320);
+    topRightArea.removeFromTop(25); // Space for "PRESET" label
+
+    // Reset button on the left
+    auto resetButtonArea = topRightArea.removeFromLeft(110);
+    resetButton.setBounds(resetButtonArea.withSizeKeepingCentre(90, 30));
+
+    topRightArea.removeFromLeft(10); // Spacing
+
+    // Preset selector on the right
+    presetBox.setBounds(topRightArea.withSizeKeepingCentre(180, 30));
 
     bounds.removeFromTop(10);
 
@@ -315,6 +386,24 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     timeModeBox.setBounds(modeRow.withSizeKeepingCentre(120, 30));
 
     bounds.removeFromTop(10);
+
+    // Telephone controls row (only visible when telephone preset is selected)
+    if (noiseSlider.isVisible())
+    {
+        auto telephoneRow = bounds.removeFromTop(140);
+        int telephoneKnobWidth = telephoneRow.getWidth() / 3;
+
+        // Noise knob (left third)
+        noiseSlider.setBounds(telephoneRow.removeFromLeft(telephoneKnobWidth).reduced(20));
+
+        // Phaser Mix knob (center third)
+        phaserMixSlider.setBounds(telephoneRow.removeFromLeft(telephoneKnobWidth).reduced(20));
+
+        // Phaser Speed knob (right third)
+        phaserSpeedSlider.setBounds(telephoneRow.reduced(20));
+
+        bounds.removeFromTop(10);
+    }
 
     // Bottom row: PING PONG - PENDULUM PAN - REVERSE
     auto bottomRow = bounds.removeFromTop(70);

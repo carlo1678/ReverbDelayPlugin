@@ -87,6 +87,9 @@ private:
     std::atomic<float>* wowParam = nullptr;
     std::atomic<float>* flutterParam = nullptr;
     std::atomic<float>* pendulumPanParam = nullptr;
+    std::atomic<float>* noiseParam = nullptr;
+    std::atomic<float>* phaserMixParam = nullptr;
+    std::atomic<float>* phaserSpeedParam = nullptr;
 
     // DSP Components
     DelayLine delayLineLeft;
@@ -111,6 +114,12 @@ private:
 
     // Pendulum panning state
     float pendulumPhase = 0.0f;
+
+    // Phaser state
+    float phaserPhase = 0.0f;
+
+    // Random number generator for noise
+    juce::Random random;
 
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbDelayPluginAudioProcessor)
