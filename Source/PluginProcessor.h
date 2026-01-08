@@ -118,8 +118,12 @@ private:
     // Phaser state
     float phaserPhase = 0.0f;
 
-    // Random number generator for noise
-    juce::Random random;
+    // Telephone noise sample buffer and playback position
+    juce::AudioBuffer<float> telephoneNoiseSample;
+    int telephoneNoiseReadPos = 0;
+
+    // Helper method to load telephone noise
+    void loadTelephoneNoise();
 
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbDelayPluginAudioProcessor)

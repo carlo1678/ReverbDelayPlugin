@@ -41,6 +41,9 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     noiseParam = parameters.getRawParameterValue("noise");
     phaserMixParam = parameters.getRawParameterValue("phaser_mix");
     phaserSpeedParam = parameters.getRawParameterValue("phaser_speed");
+
+    // Load telephone noise sample
+    loadTelephoneNoise();
 }
 
 
@@ -385,13 +388,25 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     rightDelayed *= rightGain;
                 }
 
-                // Apply noise/static (telephone effect)
-                if (noise > 0.0f)
+                // Apply noise/static (telephone effect) using loaded audio sample
+                if (noise > 0.0f && telephoneNoiseSample.getNumSamples() > 0)
                 {
-                    float noiseAmount = (noise / 100.0f) * 0.1f;
-                    float noiseSample = (random.nextFloat() * 2.0f - 1.0f) * noiseAmount;
+                    float noiseAmount = noise / 100.0f; // 0-1 range
+
+                    // Read from telephone noise buffer (loop if necessary)
+                    int noiseChannel = telephoneNoiseSample.getNumChannels() > 0 ? 0 : 0;
+                    float noiseSample = telephoneNoiseSample.getSample(noiseChannel, telephoneNoiseReadPos);
+
+                    // Apply noise amount scaling
+                    noiseSample *= noiseAmount;
+
                     leftDelayed += noiseSample;
                     rightDelayed += noiseSample;
+
+                    // Increment and wrap read position
+                    telephoneNoiseReadPos++;
+                    if (telephoneNoiseReadPos >= telephoneNoiseSample.getNumSamples())
+                        telephoneNoiseReadPos = 0;
                 }
 
                 // Apply phaser effect (amplitude modulation for call fading effect)
@@ -463,13 +478,25 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     rightDelayed *= rightGain;
                 }
 
-                // Apply noise/static (telephone effect)
-                if (noise > 0.0f)
+                // Apply noise/static (telephone effect) using loaded audio sample
+                if (noise > 0.0f && telephoneNoiseSample.getNumSamples() > 0)
                 {
-                    float noiseAmount = (noise / 100.0f) * 0.1f; // Scale to reasonable level
-                    float noiseSample = (random.nextFloat() * 2.0f - 1.0f) * noiseAmount;
+                    float noiseAmount = noise / 100.0f; // 0-1 range
+
+                    // Read from telephone noise buffer (loop if necessary)
+                    int noiseChannel = telephoneNoiseSample.getNumChannels() > 0 ? 0 : 0;
+                    float noiseSample = telephoneNoiseSample.getSample(noiseChannel, telephoneNoiseReadPos);
+
+                    // Apply noise amount scaling
+                    noiseSample *= noiseAmount;
+
                     leftDelayed += noiseSample;
                     rightDelayed += noiseSample;
+
+                    // Increment and wrap read position
+                    telephoneNoiseReadPos++;
+                    if (telephoneNoiseReadPos >= telephoneNoiseSample.getNumSamples())
+                        telephoneNoiseReadPos = 0;
                 }
 
                 // Apply phaser effect (amplitude modulation for call fading effect)
@@ -710,5 +737,73 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 
     default:
         break;
+    }
+}
+
+//==============================================================================
+// Load telephone noise sample
+void ReverbDelayPluginAudioProcessor::loadTelephoneNoise()
+{
+    // Get the path to the telephone noise file
+    // The file is located in test_audio/telephone noise.wav relative to the plugin binary
+    juce::File pluginDir = juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory();
+
+    // Try multiple possible locations for the noise file
+    juce::Array<juce::File> searchPaths;
+
+    // Path 1: Same directory as executable
+    searchPaths.add(pluginDir.getChildFile("telephone noise.wav"));
+
+    // Path 2: One level up (for development builds)
+    searchPaths.add(pluginDir.getParentDirectory().getChildFile("test_audio").getChildFile("telephone noise.wav"));
+
+    // Path 3: Two levels up (for some build configurations)
+    searchPaths.add(pluginDir.getParentDirectory().getParentDirectory().getChildFile("test_audio").getChildFile("telephone noise.wav"));
+
+    // Path 4: Check in source directory (for development)
+    searchPaths.add(juce::File::getCurrentWorkingDirectory().getChildFile("test_audio").getChildFile("telephone noise.wav"));
+
+    juce::File noiseFile;
+    for (auto& path : searchPaths)
+    {
+        if (path.existsAsFile())
+        {
+            noiseFile = path;
+            break;
+        }
+    }
+
+    if (!noiseFile.existsAsFile())
+    {
+        DBG("Telephone noise file not found in any search path");
+        return;
+    }
+
+    // Create audio format manager and register basic formats
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+
+    // Create reader for the WAV file
+    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(noiseFile));
+
+    if (reader != nullptr)
+    {
+        // Allocate buffer with same number of channels and length as the file
+        telephoneNoiseSample.setSize(static_cast<int>(reader->numChannels),
+                                      static_cast<int>(reader->lengthInSamples));
+
+        // Read the entire file into the buffer
+        reader->read(&telephoneNoiseSample,
+                     0,
+                     static_cast<int>(reader->lengthInSamples),
+                     0,
+                     true,
+                     true);
+
+        DBG("Telephone noise loaded successfully: " + juce::String(reader->lengthInSamples) + " samples");
+    }
+    else
+    {
+        DBG("Failed to create reader for telephone noise file");
     }
 }
