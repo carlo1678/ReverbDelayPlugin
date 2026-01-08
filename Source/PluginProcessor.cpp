@@ -242,28 +242,22 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     // Always tempo sync except in TIME mode
     bool tempoSyncEnabled = (timeMode != 1);
 
-    // Get note division from TIME knob (0-4)
-    int noteDivision = static_cast<int>(delayTimeParam->load());
+    // Get delay time value (0-15000)
+    float delayTimeValue = delayTimeParam->load();
 
     // Calculate delay time
     float delayTime = 0.0f;
 
     if (timeMode == 1) // TIME mode - use milliseconds directly
     {
-        // In TIME mode, map note divisions to millisecond ranges
-        // 0=100ms, 1=400ms, 2=800ms, 3=1400ms, 4=2000ms
-        switch (noteDivision)
-        {
-        case 0: delayTime = 100.0f; break;
-        case 1: delayTime = 400.0f; break;
-        case 2: delayTime = 800.0f; break;
-        case 3: delayTime = 1400.0f; break;
-        case 4: delayTime = 2000.0f; break;
-        default: delayTime = 800.0f; break;
-        }
+        delayTime = delayTimeValue; // Direct milliseconds (0-15000)
     }
     else // NOTES, TRIPLET, or DOTTED modes - calculate based on tempo
     {
+        // Map continuous value (0-15000) to note division (0-4)
+        int noteDivision = static_cast<int>(delayTimeValue / 3000.0f);
+        if (noteDivision > 4) noteDivision = 4;
+
         double bpm = 120.0; // Default tempo when not synced
 
         if (tempoSyncEnabled)
@@ -501,10 +495,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "mix", "Mix", 0.0f, 100.0f, 50.0f));
 
-    // Delay Time (note divisions)
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+    // Delay Time - can be note divisions (0-4) or milliseconds (0-15000) depending on mode
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "delay_time", "Time",
-        juce::StringArray{ "1/16", "1/8", "1/4", "1/2", "Whole" }, 2)); // Default to 1/4
+        juce::NormalisableRange<float>(0.0f, 15000.0f, 1.0f, 0.3f),
+        500.0f)); // Default to 500ms
 
     // Time Mode (Notes, Time, Triplet, Dotted)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -589,21 +584,21 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
     {
     case 0: // Telephone - Classic telephone effect with narrow frequency range
         parameters.getParameter("mix")->setValueNotifyingHost(0.40f); // 40%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.5f); // 1/4 note (index 2)
+        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode (index 0)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.30f); // Moderate feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(0.40f); // ~400 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.15f); // ~3000 Hz
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.276f); // 290 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.173f); // 4000 Hz
         parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         break;
 
     case 1: // Underwater - Deep, muffled underwater sound
         parameters.getParameter("mix")->setValueNotifyingHost(0.60f); // 60%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.5f); // 1/4 note (index 2)
+        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.65f); // High feedback for swirly effect
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
@@ -617,7 +612,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 
     case 2: // Tape - Classic cassette tape feel with wow and flutter
         parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.5f); // 1/4 note (index 2)
+        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.33f); // Time mode (index 1)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.50f); // Moderate feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off for vintage feel
@@ -631,7 +626,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 
     case 3: // Radio - Vintage radio broadcast sound
         parameters.getParameter("mix")->setValueNotifyingHost(0.35f); // 35%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(0.5f); // 1/4 note (index 2)
+        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.20f); // Low feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On

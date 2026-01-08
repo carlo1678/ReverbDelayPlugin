@@ -52,28 +52,35 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     mixAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
         audioProcessor.parameters, "mix", mixSlider));
 
-    // Setup Delay Time Slider (rotary knob)
+    // Setup Delay Time Slider (rotary knob) - shows note divisions or milliseconds
     setupSlider(delayTimeSlider, delayTimeLabel, "TIME", "");
     delayTimeAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
         audioProcessor.parameters, "delay_time", delayTimeSlider));
 
-    // Setup Delay Time Slider (rotary knob) - now shows note divisions
-    setupSlider(delayTimeSlider, delayTimeLabel, "TIME", "");
-    delayTimeAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
-        audioProcessor.parameters, "delay_time", delayTimeSlider));
-
-    // Configure to show note division text instead of numbers
-    delayTimeSlider.textFromValueFunction = [](double value)
+    // Configure to show note division or milliseconds based on time mode
+    delayTimeSlider.textFromValueFunction = [this](double value)
         {
-            int index = static_cast<int>(value);
-            switch (index)
+            // Get current time mode (0=Notes, 1=Time, 2=Triplet, 3=Dotted)
+            int timeMode = static_cast<int>(audioProcessor.parameters.getRawParameterValue("time_mode")->load());
+
+            if (timeMode == 1) // TIME mode - show milliseconds
             {
-            case 0: return juce::String("1/16");
-            case 1: return juce::String("1/8");
-            case 2: return juce::String("1/4");
-            case 3: return juce::String("1/2");
-            case 4: return juce::String("Whole");
-            default: return juce::String("1/4");
+                return juce::String(static_cast<int>(value)) + " ms";
+            }
+            else // NOTES/TRIPLET/DOTTED modes - show note division
+            {
+                int index = static_cast<int>(value / 3000.0f);
+                if (index > 4) index = 4;
+
+                switch (index)
+                {
+                case 0: return juce::String("1/16");
+                case 1: return juce::String("1/8");
+                case 2: return juce::String("1/4");
+                case 3: return juce::String("1/2");
+                case 4: return juce::String("Whole");
+                default: return juce::String("1/4");
+                }
             }
         };
 
@@ -87,6 +94,13 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     timeModeBox.setColour(juce::ComboBox::textColourId, juce::Colours::white);
     timeModeBox.setColour(juce::ComboBox::outlineColourId, juce::Colours::white);
     timeModeBox.setColour(juce::ComboBox::arrowColourId, juce::Colours::white);
+
+    // Update delay time slider text when mode changes
+    timeModeBox.onChange = [this]
+    {
+        delayTimeSlider.updateText(); // Force update of the displayed text
+    };
+
     addAndMakeVisible(timeModeBox);
     timeModeAttachment.reset(new juce::AudioProcessorValueTreeState::ComboBoxAttachment(
         audioProcessor.parameters, "time_mode", timeModeBox));
