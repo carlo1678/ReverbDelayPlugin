@@ -4,6 +4,15 @@
               useAppConfig="0" addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1"
               pluginFormats="buildVST3" pluginCode="Rdvb" pluginManufacturerCode="Myco">
   <MAINGROUP id="gj5fC1" name="ReverbDelayPlugin">
+    <GROUP id="{787BE210-6471-7584-22D3-5030C34EC96F}" name="Binary Resources">
+      <FILE id="AvxbQD" name="Dry Signal.wav" compile="0" resource="1" file="test_audio/Dry Signal.wav"/>
+      <FILE id="KS5Twb" name="Reversed Signal (100% wet).wav" compile="0"
+            resource="1" file="test_audio/Reversed Signal (100% wet).wav"/>
+      <FILE id="k1THEM" name="telephone noise.wav" compile="0" resource="1"
+            file="test_audio/telephone noise.wav"/>
+      <FILE id="O6562J" name="underwater sound effect.wav" compile="0" resource="1"
+            file="test_audio/underwater sound effect.wav"/>
+    </GROUP>
     <GROUP id="{EC6A88AC-F984-84D0-C877-B5F80E1A489F}" name="Source">
       <FILE id="q6NsZg" name="CustomLookAndFeel.h" compile="0" resource="0"
             file="Source/UI/CustomLookAndFeel.h"/>
