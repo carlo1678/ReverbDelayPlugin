@@ -87,6 +87,7 @@ private:
     std::atomic<float>* wowParam = nullptr;
     std::atomic<float>* flutterParam = nullptr;
     std::atomic<float>* pendulumPanParam = nullptr;
+    std::atomic<float>* pendulumSpeedParam = nullptr;
     std::atomic<float>* noiseParam = nullptr;
     std::atomic<float>* phaserMixParam = nullptr;
     std::atomic<float>* phaserSpeedParam = nullptr;
