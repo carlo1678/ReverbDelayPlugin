@@ -90,6 +90,7 @@ private:
     juce::Slider phaserSpeedSlider;
     juce::Slider underwaterMixSlider;
     juce::Slider mechanicalNoiseSlider;
+    juce::Slider radioNoiseSlider;
 
     // Toggle buttons
     juce::ToggleButton reverseDelayButton;
@@ -118,6 +119,7 @@ private:
     juce::Label phaserSpeedLabel;
     juce::Label underwaterMixLabel;
     juce::Label mechanicalNoiseLabel;
+    juce::Label radioNoiseLabel;
     juce::Label pendulumSpeedLabel;
 
     // Attachments
@@ -133,6 +135,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> phaserSpeedAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> underwaterMixAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> mechanicalNoiseAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> radioNoiseAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> reverseDelayAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> pingPongAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> pendulumPanAttachment;

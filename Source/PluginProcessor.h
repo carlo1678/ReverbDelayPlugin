@@ -93,6 +93,7 @@ private:
     std::atomic<float>* phaserSpeedParam = nullptr;
     std::atomic<float>* underwaterMixParam = nullptr;
     std::atomic<float>* mechanicalNoiseParam = nullptr;
+    std::atomic<float>* radioNoiseParam = nullptr;
 
     // DSP Components
     DelayLine delayLineLeft;
@@ -133,10 +134,15 @@ private:
     juce::AudioBuffer<float> mechanicalNoiseSample;
     int mechanicalNoiseReadPos = 0;
 
+    // Radio noise sample buffer and playback position
+    juce::AudioBuffer<float> radioNoiseSample;
+    int radioNoiseReadPos = 0;
+
     // Envelope following for audio overlays
     float telephoneEnvelope = 0.0f;
     float underwaterEnvelope = 0.0f;
     float mechanicalEnvelope = 0.0f;
+    float radioEnvelope = 0.0f;
     const float envelopeAttack = 0.99f;  // Fast attack
     float envelopeRelease = 0.9995f;     // Slow release (will be adjusted by feedback)
 
@@ -144,6 +150,7 @@ private:
     void loadTelephoneNoise();
     void loadUnderwaterSound();
     void loadMechanicalNoise();
+    void loadRadioNoise();
 
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ReverbDelayPluginAudioProcessor)
