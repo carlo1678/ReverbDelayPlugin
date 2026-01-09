@@ -127,6 +127,12 @@ private:
     juce::AudioBuffer<float> underwaterSoundSample;
     int underwaterSoundReadPos = 0;
 
+    // Envelope following for audio overlays
+    float telephoneEnvelope = 0.0f;
+    float underwaterEnvelope = 0.0f;
+    const float envelopeAttack = 0.99f;  // Fast attack
+    float envelopeRelease = 0.9995f;     // Slow release (will be adjusted by feedback)
+
     // Helper methods to load audio samples
     void loadTelephoneNoise();
     void loadUnderwaterSound();

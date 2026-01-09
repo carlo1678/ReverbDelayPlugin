@@ -373,7 +373,8 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     // MOD BOX (center section)
     auto modBoxSection = middleRow.removeFromLeft(middleSectionWidth);
 
-    // MOD title label at top of box
+    // MOD title label at top of box (with spacing from border)
+    modBoxSection.removeFromTop(5); // Add spacing between border and label
     modLabel.setBounds(modBoxSection.removeFromTop(30));
 
     // Mod knobs side by side inside the box

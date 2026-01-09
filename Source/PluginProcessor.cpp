@@ -216,6 +216,11 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     float phaserSpeed = phaserSpeedParam->load();
     float underwaterMix = underwaterMixParam->load() / 100.0f; // Convert 0-100 to 0-1
 
+    // Calculate dynamic envelope release based on feedback
+    // Higher feedback = longer release time for overlay sounds
+    // Map feedback (0-0.99) to release coefficient (0.995-0.9998)
+    envelopeRelease = 0.995f + (feedback * 0.0048f);
+
     // Only update filter coefficients when parameters actually change
     // This prevents crackling/zipper noise from constant coefficient updates
     const float freqChangeThreshold = 0.1f; // Only update if changed by more than 0.1 Hz
@@ -396,12 +401,21 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 {
                     float noiseAmount = noise / 100.0f; // 0-1 range
 
+                    // Calculate signal level from delayed signal (average of left and right)
+                    float delayedLevel = (std::abs(leftDelayed) + std::abs(rightDelayed)) * 0.5f;
+
+                    // Update telephone envelope with attack/release
+                    if (delayedLevel > telephoneEnvelope)
+                        telephoneEnvelope = delayedLevel + envelopeAttack * (telephoneEnvelope - delayedLevel);
+                    else
+                        telephoneEnvelope = delayedLevel + envelopeRelease * (telephoneEnvelope - delayedLevel);
+
                     // Read from telephone noise buffer (loop if necessary)
                     int noiseChannel = telephoneNoiseSample.getNumChannels() > 0 ? 0 : 0;
                     float noiseSample = telephoneNoiseSample.getSample(noiseChannel, telephoneNoiseReadPos);
 
-                    // Apply noise amount scaling
-                    noiseSample *= noiseAmount;
+                    // Apply noise amount scaling and envelope
+                    noiseSample *= noiseAmount * telephoneEnvelope;
 
                     leftDelayed += noiseSample;
                     rightDelayed += noiseSample;
@@ -431,9 +445,21 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Layer underwater sound effect (underwater preset only)
                 if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
                 {
+                    // Calculate signal level from input signal (average of left and right)
+                    float inputLevel = (std::abs(leftInput) + std::abs(rightInput)) * 0.5f;
+
+                    // Update underwater envelope with attack/release
+                    if (inputLevel > underwaterEnvelope)
+                        underwaterEnvelope = inputLevel + envelopeAttack * (underwaterEnvelope - inputLevel);
+                    else
+                        underwaterEnvelope = inputLevel + envelopeRelease * (underwaterEnvelope - inputLevel);
+
                     // Read from underwater sound buffer (loop if necessary)
                     int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
                     float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
+
+                    // Apply envelope to underwater sound
+                    underwaterSample *= underwaterEnvelope;
 
                     // Layer underwater sound with the input (not just delayed signal)
                     // This creates the underwater ambience effect
@@ -504,12 +530,21 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 {
                     float noiseAmount = noise / 100.0f; // 0-1 range
 
+                    // Calculate signal level from delayed signal (average of left and right)
+                    float delayedLevel = (std::abs(leftDelayed) + std::abs(rightDelayed)) * 0.5f;
+
+                    // Update telephone envelope with attack/release
+                    if (delayedLevel > telephoneEnvelope)
+                        telephoneEnvelope = delayedLevel + envelopeAttack * (telephoneEnvelope - delayedLevel);
+                    else
+                        telephoneEnvelope = delayedLevel + envelopeRelease * (telephoneEnvelope - delayedLevel);
+
                     // Read from telephone noise buffer (loop if necessary)
                     int noiseChannel = telephoneNoiseSample.getNumChannels() > 0 ? 0 : 0;
                     float noiseSample = telephoneNoiseSample.getSample(noiseChannel, telephoneNoiseReadPos);
 
-                    // Apply noise amount scaling
-                    noiseSample *= noiseAmount;
+                    // Apply noise amount scaling and envelope
+                    noiseSample *= noiseAmount * telephoneEnvelope;
 
                     leftDelayed += noiseSample;
                     rightDelayed += noiseSample;
@@ -539,9 +574,21 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Layer underwater sound effect (underwater preset only)
                 if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
                 {
+                    // Calculate signal level from input signal (average of left and right)
+                    float inputLevel = (std::abs(leftInput) + std::abs(rightInput)) * 0.5f;
+
+                    // Update underwater envelope with attack/release
+                    if (inputLevel > underwaterEnvelope)
+                        underwaterEnvelope = inputLevel + envelopeAttack * (underwaterEnvelope - inputLevel);
+                    else
+                        underwaterEnvelope = inputLevel + envelopeRelease * (underwaterEnvelope - inputLevel);
+
                     // Read from underwater sound buffer (loop if necessary)
                     int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
                     float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
+
+                    // Apply envelope to underwater sound
+                    underwaterSample *= underwaterEnvelope;
 
                     // Layer underwater sound with the input (not just delayed signal)
                     // This creates the underwater ambience effect
@@ -621,7 +668,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "delay_time", "Time",
         juce::NormalisableRange<float>(0.0f, 15000.0f, 1.0f, 0.3f),
-        500.0f)); // Default to 500ms
+        9000.0f)); // Default to 1/2 note (9000ms)
 
     // Time Mode (Notes, Time, Triplet, Dotted)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -724,7 +771,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
     {
     case 0: // Telephone - Classic telephone effect with narrow frequency range
         parameters.getParameter("mix")->setValueNotifyingHost(0.40f); // 40%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
+        parameters.getParameter("delay_time")->setValueNotifyingHost(9000.0f / 15000.0f); // 1/2 note
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode (index 0)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.30f); // Moderate feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
@@ -738,7 +785,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 
     case 1: // Underwater - Deep, muffled underwater sound with bubbles
         parameters.getParameter("mix")->setValueNotifyingHost(0.60f); // 60%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
+        parameters.getParameter("delay_time")->setValueNotifyingHost(9000.0f / 15000.0f); // 1/2 note
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.65f); // High feedback for swirly effect
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
@@ -753,7 +800,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 
     case 2: // Tape - Classic cassette tape feel with wow and flutter
         parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
+        parameters.getParameter("delay_time")->setValueNotifyingHost(9000.0f / 15000.0f); // 1/2 note
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.33f); // Time mode (index 1)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.50f); // Moderate feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off for vintage feel
@@ -767,7 +814,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 
     case 3: // Radio - Vintage radio broadcast sound
         parameters.getParameter("mix")->setValueNotifyingHost(0.35f); // 35%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
+        parameters.getParameter("delay_time")->setValueNotifyingHost(9000.0f / 15000.0f); // 1/2 note
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.20f); // Low feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
