@@ -538,8 +538,10 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
         // Underwater controls (1 knob centered)
         if (underwaterMixSlider.isVisible())
         {
-            // Bubbles knob (centered)
-            underwaterMixSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(120, 110));
+            // Bubbles knob (centered with top spacing to avoid label collision)
+            auto underwaterArea = presetEfxContentArea;
+            underwaterArea.removeFromTop(10); // Add spacing from title
+            underwaterMixSlider.setBounds(underwaterArea.withSizeKeepingCentre(110, 90));
         }
 
         // Tape controls (3 knobs side by side: wow, flutter, mechanical noise)
@@ -560,8 +562,10 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
         // Radio controls (1 knob centered)
         if (radioNoiseSlider.isVisible())
         {
-            // Radio Noise knob (centered)
-            radioNoiseSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(120, 110));
+            // Radio Noise knob (centered with top spacing to avoid label collision)
+            auto radioArea = presetEfxContentArea;
+            radioArea.removeFromTop(10); // Add spacing from title
+            radioNoiseSlider.setBounds(radioArea.withSizeKeepingCentre(110, 90));
         }
 
         // Pendulum speed control (centered dropdown)
