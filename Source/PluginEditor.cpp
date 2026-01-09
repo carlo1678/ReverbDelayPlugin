@@ -133,11 +133,24 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
             // Show/hide preset-specific controls
             bool isTelephonePreset = (selectedId == 1); // Telephone is first item (ID 1)
             bool isUnderwaterPreset = (selectedId == 2); // Underwater is second item (ID 2)
+            bool isTapePreset = (selectedId == 3); // Tape is third item (ID 3)
 
+            // Telephone preset controls
             noiseSlider.setVisible(isTelephonePreset);
             phaserMixSlider.setVisible(isTelephonePreset);
             phaserSpeedSlider.setVisible(isTelephonePreset);
+
+            // Underwater preset controls
             underwaterMixSlider.setVisible(isUnderwaterPreset);
+
+            // Tape preset controls (wow, flutter, mechanical noise in Preset Specific EFX box)
+            // When tape is selected, wow/flutter move from MOD box to Preset Specific EFX box
+            wowSlider.setVisible(true); // Always visible (in MOD box or Preset EFX box)
+            flutterSlider.setVisible(true); // Always visible (in MOD box or Preset EFX box)
+            mechanicalNoiseSlider.setVisible(isTapePreset);
+
+            // Show Preset Specific EFX box if any preset-specific controls are active
+            presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset);
 
             // Trigger layout update
             resized();
@@ -183,6 +196,14 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     modLabel.setColour(juce::Label::textColourId, juce::Colours::white);
     modLabel.setFont(juce::Font(18.0f, juce::Font::bold));
     addAndMakeVisible(modLabel);
+
+    // Setup Preset Specific EFX label
+    presetEfxLabel.setText("Preset Specific EFX", juce::dontSendNotification);
+    presetEfxLabel.setJustificationType(juce::Justification::centred);
+    presetEfxLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    presetEfxLabel.setFont(juce::Font(16.0f, juce::Font::bold));
+    addAndMakeVisible(presetEfxLabel);
+    presetEfxLabel.setVisible(false); // Hidden by default
 
     // Setup Reverse Button
     reverseDelayButton.setButtonText("REVERSE");
@@ -232,11 +253,17 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         audioProcessor.parameters, "phaser_speed", phaserSpeedSlider));
     phaserSpeedSlider.setVisible(false); // Hidden by default
 
-    // Setup Underwater Mix Slider (underwater preset only)
-    setupSlider(underwaterMixSlider, underwaterMixLabel, "UNDERWATER MIX", "%");
+    // Setup Underwater Mix Slider (underwater preset only) - labeled as "Bubbles"
+    setupSlider(underwaterMixSlider, underwaterMixLabel, "BUBBLES", "%");
     underwaterMixAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
         audioProcessor.parameters, "underwater_mix", underwaterMixSlider));
     underwaterMixSlider.setVisible(false); // Hidden by default
+
+    // Setup Mechanical Noise Slider (tape preset only)
+    setupSlider(mechanicalNoiseSlider, mechanicalNoiseLabel, "MECHANICAL", "%");
+    mechanicalNoiseAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "mechanical_noise", mechanicalNoiseSlider));
+    mechanicalNoiseSlider.setVisible(false); // Hidden by default
 
     // Setup Reset Button
     resetButton.setButtonText("RESET");
@@ -261,6 +288,7 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         audioProcessor.parameters.getParameter("phaser_mix")->setValueNotifyingHost(0.0f);
         audioProcessor.parameters.getParameter("phaser_speed")->setValueNotifyingHost(1.0f / 10.0f);
         audioProcessor.parameters.getParameter("underwater_mix")->setValueNotifyingHost(0.0f);
+        audioProcessor.parameters.getParameter("mechanical_noise")->setValueNotifyingHost(0.0f);
 
         // Reset preset selector
         presetBox.setSelectedId(0);
@@ -270,6 +298,10 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         phaserMixSlider.setVisible(false);
         phaserSpeedSlider.setVisible(false);
         underwaterMixSlider.setVisible(false);
+        mechanicalNoiseSlider.setVisible(false);
+        wowSlider.setVisible(true); // Show wow/flutter by default (not in EFX box)
+        flutterSlider.setVisible(true);
+        presetEfxLabel.setVisible(false);
     };
     addAndMakeVisible(resetButton);
 }
@@ -290,6 +322,7 @@ ReverbDelayPluginAudioProcessorEditor::~ReverbDelayPluginAudioProcessorEditor()
     phaserMixSlider.setLookAndFeel(nullptr);
     phaserSpeedSlider.setLookAndFeel(nullptr);
     underwaterMixSlider.setLookAndFeel(nullptr);
+    mechanicalNoiseSlider.setLookAndFeel(nullptr);
 }
 
 //==============================================================================
@@ -321,6 +354,21 @@ void ReverbDelayPluginAudioProcessorEditor::paint(juce::Graphics& g)
     // Draw rounded rectangle border for MOD box
     g.setColour(juce::Colours::white);
     g.drawRoundedRectangle(modBoxSection.toFloat(), 8.0f, 2.0f);
+
+    // Draw Preset Specific EFX box border (only when visible)
+    if (presetEfxLabel.isVisible())
+    {
+        auto presetEfxBoxBounds = getLocalBounds();
+        presetEfxBoxBounds.reduce(30, 30);
+        presetEfxBoxBounds.removeFromTop(60 + 10 + 120 + 20 + 180 + 10 + 55 + 10); // Skip all previous sections
+
+        auto presetEfxBoxSection = presetEfxBoxBounds.removeFromTop(160);
+        presetEfxBoxSection.reduce(10, 10); // Add some padding
+
+        // Draw rounded rectangle border for Preset Specific EFX box
+        g.setColour(juce::Colours::white);
+        g.drawRoundedRectangle(presetEfxBoxSection.toFloat(), 8.0f, 2.0f);
+    }
 }
 
 void ReverbDelayPluginAudioProcessorEditor::resized()
@@ -373,18 +421,23 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     // MOD BOX (center section)
     auto modBoxSection = middleRow.removeFromLeft(middleSectionWidth);
 
-    // MOD title label at top of box
+    // MOD title label at top of box (with spacing from border)
+    modBoxSection.removeFromTop(5); // Add spacing between border and label
     modLabel.setBounds(modBoxSection.removeFromTop(30));
 
     // Mod knobs side by side inside the box
-    auto modKnobsArea = modBoxSection.removeFromTop(110);
-    int modKnobWidth = modKnobsArea.getWidth() / 2;
+    // Only show wow/flutter here if NOT in tape preset (tape preset shows them in Preset Specific EFX box)
+    if (!mechanicalNoiseSlider.isVisible())
+    {
+        auto modKnobsArea = modBoxSection.removeFromTop(110);
+        int modKnobWidth = modKnobsArea.getWidth() / 2;
 
-    // Wow knob (left side of mod box)
-    wowSlider.setBounds(modKnobsArea.removeFromLeft(modKnobWidth).reduced(10));
+        // Wow knob (left side of mod box)
+        wowSlider.setBounds(modKnobsArea.removeFromLeft(modKnobWidth).reduced(10));
 
-    // Flutter knob (right side of mod box)
-    flutterSlider.setBounds(modKnobsArea.reduced(10));
+        // Flutter knob (right side of mod box)
+        flutterSlider.setBounds(modKnobsArea.reduced(10));
+    }
 
     // High Cut knob (right section)
     auto highCutSection = middleRow;
@@ -399,31 +452,54 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
 
     bounds.removeFromTop(10);
 
-    // Telephone controls row (only visible when telephone preset is selected)
-    if (noiseSlider.isVisible())
+    // Preset Specific EFX box (only visible when preset-specific controls are active)
+    if (presetEfxLabel.isVisible())
     {
-        auto telephoneRow = bounds.removeFromTop(140);
-        int telephoneKnobWidth = telephoneRow.getWidth() / 3;
+        auto presetEfxRow = bounds.removeFromTop(160);
 
-        // Noise knob (left third)
-        noiseSlider.setBounds(telephoneRow.removeFromLeft(telephoneKnobWidth).reduced(20));
+        // Preset Specific EFX title label at top of box (with spacing from border)
+        presetEfxRow.removeFromTop(5); // Add spacing between border and label
+        presetEfxLabel.setBounds(presetEfxRow.removeFromTop(30));
 
-        // Phaser Mix knob (center third)
-        phaserMixSlider.setBounds(telephoneRow.removeFromLeft(telephoneKnobWidth).reduced(20));
+        // Content area inside the box
+        auto presetEfxContentArea = presetEfxRow.removeFromTop(110);
 
-        // Phaser Speed knob (right third)
-        phaserSpeedSlider.setBounds(telephoneRow.reduced(20));
+        // Telephone controls (3 knobs side by side)
+        if (noiseSlider.isVisible())
+        {
+            int telephoneKnobWidth = presetEfxContentArea.getWidth() / 3;
 
-        bounds.removeFromTop(10);
-    }
+            // Noise knob (left third)
+            noiseSlider.setBounds(presetEfxContentArea.removeFromLeft(telephoneKnobWidth).reduced(15));
 
-    // Underwater controls row (only visible when underwater preset is selected)
-    if (underwaterMixSlider.isVisible())
-    {
-        auto underwaterRow = bounds.removeFromTop(140);
+            // Phaser Mix knob (center third)
+            phaserMixSlider.setBounds(presetEfxContentArea.removeFromLeft(telephoneKnobWidth).reduced(15));
 
-        // Underwater Mix knob (centered)
-        underwaterMixSlider.setBounds(underwaterRow.withSizeKeepingCentre(130, 120));
+            // Phaser Speed knob (right third)
+            phaserSpeedSlider.setBounds(presetEfxContentArea.reduced(15));
+        }
+
+        // Underwater controls (1 knob centered)
+        if (underwaterMixSlider.isVisible())
+        {
+            // Bubbles knob (centered)
+            underwaterMixSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(120, 110));
+        }
+
+        // Tape controls (3 knobs side by side: wow, flutter, mechanical noise)
+        if (wowSlider.isVisible() && mechanicalNoiseSlider.isVisible())
+        {
+            int tapeKnobWidth = presetEfxContentArea.getWidth() / 3;
+
+            // Wow knob (left third)
+            wowSlider.setBounds(presetEfxContentArea.removeFromLeft(tapeKnobWidth).reduced(15));
+
+            // Flutter knob (center third)
+            flutterSlider.setBounds(presetEfxContentArea.removeFromLeft(tapeKnobWidth).reduced(15));
+
+            // Mechanical Noise knob (right third)
+            mechanicalNoiseSlider.setBounds(presetEfxContentArea.reduced(15));
+        }
 
         bounds.removeFromTop(10);
     }

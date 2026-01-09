@@ -42,10 +42,12 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     phaserMixParam = parameters.getRawParameterValue("phaser_mix");
     phaserSpeedParam = parameters.getRawParameterValue("phaser_speed");
     underwaterMixParam = parameters.getRawParameterValue("underwater_mix");
+    mechanicalNoiseParam = parameters.getRawParameterValue("mechanical_noise");
 
     // Load audio samples
     loadTelephoneNoise();
     loadUnderwaterSound();
+    loadMechanicalNoise();
 }
 
 
@@ -215,6 +217,12 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     float phaserMix = phaserMixParam->load() / 100.0f; // Convert 0-100 to 0-1
     float phaserSpeed = phaserSpeedParam->load();
     float underwaterMix = underwaterMixParam->load() / 100.0f; // Convert 0-100 to 0-1
+    float mechanicalNoise = mechanicalNoiseParam->load(); // 0-100 range
+
+    // Calculate dynamic envelope release based on feedback
+    // Higher feedback = longer release time for overlay sounds
+    // Map feedback (0-0.99) to release coefficient (0.995-0.9998)
+    envelopeRelease = 0.995f + (feedback * 0.0048f);
 
     // Only update filter coefficients when parameters actually change
     // This prevents crackling/zipper noise from constant coefficient updates
@@ -396,12 +404,21 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 {
                     float noiseAmount = noise / 100.0f; // 0-1 range
 
+                    // Calculate signal level from delayed signal (average of left and right)
+                    float delayedLevel = (std::abs(leftDelayed) + std::abs(rightDelayed)) * 0.5f;
+
+                    // Update telephone envelope with attack/release
+                    if (delayedLevel > telephoneEnvelope)
+                        telephoneEnvelope = delayedLevel + envelopeAttack * (telephoneEnvelope - delayedLevel);
+                    else
+                        telephoneEnvelope = delayedLevel + envelopeRelease * (telephoneEnvelope - delayedLevel);
+
                     // Read from telephone noise buffer (loop if necessary)
                     int noiseChannel = telephoneNoiseSample.getNumChannels() > 0 ? 0 : 0;
                     float noiseSample = telephoneNoiseSample.getSample(noiseChannel, telephoneNoiseReadPos);
 
-                    // Apply noise amount scaling
-                    noiseSample *= noiseAmount;
+                    // Apply noise amount scaling and envelope
+                    noiseSample *= noiseAmount * telephoneEnvelope;
 
                     leftDelayed += noiseSample;
                     rightDelayed += noiseSample;
@@ -431,9 +448,21 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Layer underwater sound effect (underwater preset only)
                 if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
                 {
+                    // Calculate signal level from input signal (average of left and right)
+                    float inputLevel = (std::abs(leftInput) + std::abs(rightInput)) * 0.5f;
+
+                    // Update underwater envelope with attack/release
+                    if (inputLevel > underwaterEnvelope)
+                        underwaterEnvelope = inputLevel + envelopeAttack * (underwaterEnvelope - inputLevel);
+                    else
+                        underwaterEnvelope = inputLevel + envelopeRelease * (underwaterEnvelope - inputLevel);
+
                     // Read from underwater sound buffer (loop if necessary)
                     int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
                     float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
+
+                    // Apply envelope to underwater sound
+                    underwaterSample *= underwaterEnvelope;
 
                     // Layer underwater sound with the input (not just delayed signal)
                     // This creates the underwater ambience effect
@@ -444,6 +473,36 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     underwaterSoundReadPos++;
                     if (underwaterSoundReadPos >= underwaterSoundSample.getNumSamples())
                         underwaterSoundReadPos = 0;
+                }
+
+                // Layer mechanical noise (tape preset only)
+                if (mechanicalNoise > 0.0f && mechanicalNoiseSample.getNumSamples() > 0)
+                {
+                    float mechanicalAmount = mechanicalNoise / 100.0f; // 0-1 range
+
+                    // Calculate signal level from delayed signal (average of left and right)
+                    float delayedLevel = (std::abs(leftDelayed) + std::abs(rightDelayed)) * 0.5f;
+
+                    // Update mechanical envelope with attack/release
+                    if (delayedLevel > mechanicalEnvelope)
+                        mechanicalEnvelope = delayedLevel + envelopeAttack * (mechanicalEnvelope - delayedLevel);
+                    else
+                        mechanicalEnvelope = delayedLevel + envelopeRelease * (mechanicalEnvelope - delayedLevel);
+
+                    // Read from mechanical noise buffer (loop if necessary)
+                    int mechanicalChannel = mechanicalNoiseSample.getNumChannels() > 0 ? 0 : 0;
+                    float mechanicalSample = mechanicalNoiseSample.getSample(mechanicalChannel, mechanicalNoiseReadPos);
+
+                    // Apply mechanical noise amount and envelope
+                    mechanicalSample *= mechanicalAmount * mechanicalEnvelope;
+
+                    leftDelayed += mechanicalSample;
+                    rightDelayed += mechanicalSample;
+
+                    // Increment and wrap read position
+                    mechanicalNoiseReadPos++;
+                    if (mechanicalNoiseReadPos >= mechanicalNoiseSample.getNumSamples())
+                        mechanicalNoiseReadPos = 0;
                 }
 
                 // Mix dry and wet (swapped for ping pong)
@@ -504,12 +563,21 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 {
                     float noiseAmount = noise / 100.0f; // 0-1 range
 
+                    // Calculate signal level from delayed signal (average of left and right)
+                    float delayedLevel = (std::abs(leftDelayed) + std::abs(rightDelayed)) * 0.5f;
+
+                    // Update telephone envelope with attack/release
+                    if (delayedLevel > telephoneEnvelope)
+                        telephoneEnvelope = delayedLevel + envelopeAttack * (telephoneEnvelope - delayedLevel);
+                    else
+                        telephoneEnvelope = delayedLevel + envelopeRelease * (telephoneEnvelope - delayedLevel);
+
                     // Read from telephone noise buffer (loop if necessary)
                     int noiseChannel = telephoneNoiseSample.getNumChannels() > 0 ? 0 : 0;
                     float noiseSample = telephoneNoiseSample.getSample(noiseChannel, telephoneNoiseReadPos);
 
-                    // Apply noise amount scaling
-                    noiseSample *= noiseAmount;
+                    // Apply noise amount scaling and envelope
+                    noiseSample *= noiseAmount * telephoneEnvelope;
 
                     leftDelayed += noiseSample;
                     rightDelayed += noiseSample;
@@ -539,9 +607,21 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Layer underwater sound effect (underwater preset only)
                 if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
                 {
+                    // Calculate signal level from input signal (average of left and right)
+                    float inputLevel = (std::abs(leftInput) + std::abs(rightInput)) * 0.5f;
+
+                    // Update underwater envelope with attack/release
+                    if (inputLevel > underwaterEnvelope)
+                        underwaterEnvelope = inputLevel + envelopeAttack * (underwaterEnvelope - inputLevel);
+                    else
+                        underwaterEnvelope = inputLevel + envelopeRelease * (underwaterEnvelope - inputLevel);
+
                     // Read from underwater sound buffer (loop if necessary)
                     int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
                     float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
+
+                    // Apply envelope to underwater sound
+                    underwaterSample *= underwaterEnvelope;
 
                     // Layer underwater sound with the input (not just delayed signal)
                     // This creates the underwater ambience effect
@@ -552,6 +632,36 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     underwaterSoundReadPos++;
                     if (underwaterSoundReadPos >= underwaterSoundSample.getNumSamples())
                         underwaterSoundReadPos = 0;
+                }
+
+                // Layer mechanical noise (tape preset only)
+                if (mechanicalNoise > 0.0f && mechanicalNoiseSample.getNumSamples() > 0)
+                {
+                    float mechanicalAmount = mechanicalNoise / 100.0f; // 0-1 range
+
+                    // Calculate signal level from delayed signal (average of left and right)
+                    float delayedLevel = (std::abs(leftDelayed) + std::abs(rightDelayed)) * 0.5f;
+
+                    // Update mechanical envelope with attack/release
+                    if (delayedLevel > mechanicalEnvelope)
+                        mechanicalEnvelope = delayedLevel + envelopeAttack * (mechanicalEnvelope - delayedLevel);
+                    else
+                        mechanicalEnvelope = delayedLevel + envelopeRelease * (mechanicalEnvelope - delayedLevel);
+
+                    // Read from mechanical noise buffer (loop if necessary)
+                    int mechanicalChannel = mechanicalNoiseSample.getNumChannels() > 0 ? 0 : 0;
+                    float mechanicalSample = mechanicalNoiseSample.getSample(mechanicalChannel, mechanicalNoiseReadPos);
+
+                    // Apply mechanical noise amount and envelope
+                    mechanicalSample *= mechanicalAmount * mechanicalEnvelope;
+
+                    leftDelayed += mechanicalSample;
+                    rightDelayed += mechanicalSample;
+
+                    // Increment and wrap read position
+                    mechanicalNoiseReadPos++;
+                    if (mechanicalNoiseReadPos >= mechanicalNoiseSample.getNumSamples())
+                        mechanicalNoiseReadPos = 0;
                 }
 
                 leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
@@ -621,7 +731,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "delay_time", "Time",
         juce::NormalisableRange<float>(0.0f, 15000.0f, 1.0f, 0.3f),
-        500.0f)); // Default to 500ms
+        9000.0f)); // Default to 1/2 note (9000ms)
 
     // Time Mode (Notes, Time, Triplet, Dotted)
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
@@ -687,6 +797,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "underwater_mix", "Underwater Mix", 0.0f, 100.0f, 0.0f));
 
+    // Mechanical Noise (tape preset only) - 0 to 100%
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "mechanical_noise", "Mechanical Noise", 0.0f, 100.0f, 0.0f));
+
     return { params.begin(), params.end() };
 }
 
@@ -724,7 +838,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
     {
     case 0: // Telephone - Classic telephone effect with narrow frequency range
         parameters.getParameter("mix")->setValueNotifyingHost(0.40f); // 40%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
+        parameters.getParameter("delay_time")->setValueNotifyingHost(9000.0f / 15000.0f); // 1/2 note
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode (index 0)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.30f); // Moderate feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
@@ -738,7 +852,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 
     case 1: // Underwater - Deep, muffled underwater sound with bubbles
         parameters.getParameter("mix")->setValueNotifyingHost(0.60f); // 60%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
+        parameters.getParameter("delay_time")->setValueNotifyingHost(9000.0f / 15000.0f); // 1/2 note
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.65f); // High feedback for swirly effect
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
@@ -753,21 +867,22 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 
     case 2: // Tape - Classic cassette tape feel with wow and flutter
         parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
+        parameters.getParameter("delay_time")->setValueNotifyingHost(9000.0f / 15000.0f); // 1/2 note
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.33f); // Time mode (index 1)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.50f); // Moderate feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off for vintage feel
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(0.06f); // ~80 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.40f); // ~8000 Hz
-        parameters.getParameter("wow")->setValueNotifyingHost(0.40f); // 40% (tape warble)
-        parameters.getParameter("flutter")->setValueNotifyingHost(0.30f); // 30%
+        parameters.getParameter("low_cut")->setValueNotifyingHost(55.0f); // 55 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(4700.0f); // 4700 Hz
+        parameters.getParameter("wow")->setValueNotifyingHost(0.16f); // 16% (tape warble)
+        parameters.getParameter("flutter")->setValueNotifyingHost(0.05f); // 5%
+        parameters.getParameter("mechanical_noise")->setValueNotifyingHost(0.0f); // 0% (off by default)
         break;
 
     case 3: // Radio - Vintage radio broadcast sound
         parameters.getParameter("mix")->setValueNotifyingHost(0.35f); // 35%
-        parameters.getParameter("delay_time")->setValueNotifyingHost(7500.0f / 15000.0f); // 1/4 note range
+        parameters.getParameter("delay_time")->setValueNotifyingHost(9000.0f / 15000.0f); // 1/2 note
         parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.20f); // Low feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
@@ -876,5 +991,51 @@ void ReverbDelayPluginAudioProcessor::loadUnderwaterSound()
     else
     {
         DBG("Failed to create reader for underwater sound binary data");
+    }
+}
+
+//==============================================================================
+// Load mechanical noise sample from embedded binary data
+void ReverbDelayPluginAudioProcessor::loadMechanicalNoise()
+{
+    // Load mechanical noise from embedded binary data
+    const char* sourceData = BinaryData::Mechanical_Noise_wav;
+    int dataSize = BinaryData::Mechanical_Noise_wavSize;
+
+    if (sourceData == nullptr || dataSize == 0)
+    {
+        DBG("Mechanical noise binary data not found - make sure to add Mechanical_Noise.wav to Projucer binary resources");
+        return;
+    }
+
+    // Create audio format manager and register basic formats
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+
+    // Create a memory input stream from the binary data
+    std::unique_ptr<juce::MemoryInputStream> inputStream(new juce::MemoryInputStream(sourceData, dataSize, false));
+
+    // Create reader for the WAV file from memory
+    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(std::move(inputStream)));
+
+    if (reader != nullptr)
+    {
+        // Allocate buffer with same number of channels and length as the file
+        mechanicalNoiseSample.setSize(static_cast<int>(reader->numChannels),
+                                      static_cast<int>(reader->lengthInSamples));
+
+        // Read the entire file into the buffer
+        reader->read(&mechanicalNoiseSample,
+                     0,
+                     static_cast<int>(reader->lengthInSamples),
+                     0,
+                     true,
+                     true);
+
+        DBG("Mechanical noise loaded successfully from binary data: " + juce::String(reader->lengthInSamples) + " samples");
+    }
+    else
+    {
+        DBG("Failed to create reader for mechanical noise binary data");
     }
 }
