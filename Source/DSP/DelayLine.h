@@ -32,11 +32,8 @@ private:
 
     PitchShifter pitchShifter;
 
-    // Reverse delay - snapshot-based (double buffering)
-    std::vector<float> reverseCaptureBuffer;   // Currently capturing audio
-    std::vector<float> reversePlaybackBuffer;  // Currently playing back (reversed)
-    int reversePhase = 0;  // Current position within delay period (0 to delayTime)
-    int lastSnapshotSize = 0;  // Size of the last captured snapshot
+    // Reverse delay - continuous reverse playback
+    float reverseReadPosition = 0.0f;  // Floating point read position for smooth reverse playback
 
     // Wow and Flutter LFO state
     float wowPhase = 0.0f;      // Phase for wow LFO (0 to 2π)
