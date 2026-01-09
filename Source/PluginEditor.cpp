@@ -159,6 +159,7 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
             bool isTelephonePreset = (selectedId == 1); // Telephone is first item (ID 1)
             bool isUnderwaterPreset = (selectedId == 2); // Underwater is second item (ID 2)
             bool isTapePreset = (selectedId == 3); // Tape is third item (ID 3)
+            bool isRadioPreset = (selectedId == 4); // Radio is fourth item (ID 4)
 
             // Telephone preset controls
             noiseSlider.setVisible(isTelephonePreset);
@@ -174,9 +175,12 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
             flutterSlider.setVisible(true); // Always visible (in MOD box or Preset EFX box)
             mechanicalNoiseSlider.setVisible(isTapePreset);
 
+            // Radio preset controls
+            radioNoiseSlider.setVisible(isRadioPreset);
+
             // Show Preset Specific EFX box if any preset-specific controls or pendulum pan is active
             bool isPendulumEnabled = pendulumPanButton.getToggleState();
-            presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset || isPendulumEnabled);
+            presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset || isRadioPreset || isPendulumEnabled);
 
             // Trigger layout update
             resized();
@@ -273,7 +277,8 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         bool isTelephonePreset = (selectedId == 1);
         bool isUnderwaterPreset = (selectedId == 2);
         bool isTapePreset = (selectedId == 3);
-        presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset || isPendulumEnabled);
+        bool isRadioPreset = (selectedId == 4);
+        presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset || isRadioPreset || isPendulumEnabled);
 
         // Trigger layout update
         resized();
@@ -308,6 +313,12 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     mechanicalNoiseAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
         audioProcessor.parameters, "mechanical_noise", mechanicalNoiseSlider));
     mechanicalNoiseSlider.setVisible(false); // Hidden by default
+
+    // Setup Radio Noise Slider (radio preset only)
+    setupSlider(radioNoiseSlider, radioNoiseLabel, "RADIO NOISE", "%");
+    radioNoiseAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "radio_noise", radioNoiseSlider));
+    radioNoiseSlider.setVisible(false); // Hidden by default
 
     // Setup Reset Button
     resetButton.setButtonText("RESET");
@@ -367,6 +378,7 @@ ReverbDelayPluginAudioProcessorEditor::~ReverbDelayPluginAudioProcessorEditor()
     phaserSpeedSlider.setLookAndFeel(nullptr);
     underwaterMixSlider.setLookAndFeel(nullptr);
     mechanicalNoiseSlider.setLookAndFeel(nullptr);
+    radioNoiseSlider.setLookAndFeel(nullptr);
 }
 
 //==============================================================================
@@ -543,6 +555,13 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
 
             // Mechanical Noise knob (right third)
             mechanicalNoiseSlider.setBounds(presetEfxContentArea.reduced(15));
+        }
+
+        // Radio controls (1 knob centered)
+        if (radioNoiseSlider.isVisible())
+        {
+            // Radio Noise knob (centered)
+            radioNoiseSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(120, 110));
         }
 
         // Pendulum speed control (centered dropdown)

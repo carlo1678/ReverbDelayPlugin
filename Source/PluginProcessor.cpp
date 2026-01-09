@@ -44,11 +44,13 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     phaserSpeedParam = parameters.getRawParameterValue("phaser_speed");
     underwaterMixParam = parameters.getRawParameterValue("underwater_mix");
     mechanicalNoiseParam = parameters.getRawParameterValue("mechanical_noise");
+    radioNoiseParam = parameters.getRawParameterValue("radio_noise");
 
     // Load audio samples
     loadTelephoneNoise();
     loadUnderwaterSound();
     loadMechanicalNoise();
+    loadRadioNoise();
 }
 
 
@@ -219,6 +221,7 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     float phaserSpeed = phaserSpeedParam->load();
     float underwaterMix = underwaterMixParam->load() / 100.0f; // Convert 0-100 to 0-1
     float mechanicalNoise = mechanicalNoiseParam->load(); // 0-100 range
+    float radioNoise = radioNoiseParam->load(); // 0-100 range
 
     // Calculate dynamic envelope release based on feedback
     // Higher feedback = longer release time for overlay sounds
@@ -508,6 +511,36 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                         mechanicalNoiseReadPos = 0;
                 }
 
+                // Layer radio noise (radio preset only)
+                if (radioNoise > 0.0f && radioNoiseSample.getNumSamples() > 0)
+                {
+                    float radioAmount = radioNoise / 100.0f; // 0-1 range
+
+                    // Calculate signal level from delayed signal (average of left and right)
+                    float delayedLevel = (std::abs(leftDelayed) + std::abs(rightDelayed)) * 0.5f;
+
+                    // Update radio envelope with attack/release
+                    if (delayedLevel > radioEnvelope)
+                        radioEnvelope = delayedLevel + envelopeAttack * (radioEnvelope - delayedLevel);
+                    else
+                        radioEnvelope = delayedLevel + envelopeRelease * (radioEnvelope - delayedLevel);
+
+                    // Read from radio noise buffer (loop if necessary)
+                    int radioChannel = radioNoiseSample.getNumChannels() > 0 ? 0 : 0;
+                    float radioSample = radioNoiseSample.getSample(radioChannel, radioNoiseReadPos);
+
+                    // Apply radio noise amount and envelope
+                    radioSample *= radioAmount * radioEnvelope;
+
+                    leftDelayed += radioSample;
+                    rightDelayed += radioSample;
+
+                    // Increment and wrap read position
+                    radioNoiseReadPos++;
+                    if (radioNoiseReadPos >= radioNoiseSample.getNumSamples())
+                        radioNoiseReadPos = 0;
+                }
+
                 // Mix dry and wet (swapped for ping pong)
                 float finalLeft = leftInput * (1.0f - mix) + leftDelayed * mix;
                 float finalRight = rightInput * (1.0f - mix) + rightDelayed * mix;
@@ -676,6 +709,36 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                         mechanicalNoiseReadPos = 0;
                 }
 
+                // Layer radio noise (radio preset only)
+                if (radioNoise > 0.0f && radioNoiseSample.getNumSamples() > 0)
+                {
+                    float radioAmount = radioNoise / 100.0f; // 0-1 range
+
+                    // Calculate signal level from delayed signal (average of left and right)
+                    float delayedLevel = (std::abs(leftDelayed) + std::abs(rightDelayed)) * 0.5f;
+
+                    // Update radio envelope with attack/release
+                    if (delayedLevel > radioEnvelope)
+                        radioEnvelope = delayedLevel + envelopeAttack * (radioEnvelope - delayedLevel);
+                    else
+                        radioEnvelope = delayedLevel + envelopeRelease * (radioEnvelope - delayedLevel);
+
+                    // Read from radio noise buffer (loop if necessary)
+                    int radioChannel = radioNoiseSample.getNumChannels() > 0 ? 0 : 0;
+                    float radioSample = radioNoiseSample.getSample(radioChannel, radioNoiseReadPos);
+
+                    // Apply radio noise amount and envelope
+                    radioSample *= radioAmount * radioEnvelope;
+
+                    leftDelayed += radioSample;
+                    rightDelayed += radioSample;
+
+                    // Increment and wrap read position
+                    radioNoiseReadPos++;
+                    if (radioNoiseReadPos >= radioNoiseSample.getNumSamples())
+                        radioNoiseReadPos = 0;
+                }
+
                 // Mix dry and wet signals
                 float finalLeft = leftInput * (1.0f - mix) + leftDelayed * mix;
                 float finalRight = rightInput * (1.0f - mix) + rightDelayed * mix;
@@ -841,6 +904,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "mechanical_noise", "Mechanical Noise", 0.0f, 100.0f, 0.0f));
 
+    // Radio Noise (radio preset only) - 0 to 100%
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "radio_noise", "Radio Noise", 0.0f, 100.0f, 0.0f));
+
     return { params.begin(), params.end() };
 }
 
@@ -928,10 +995,11 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(0.60f); // ~600 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.13f); // ~2800 Hz
-        parameters.getParameter("wow")->setValueNotifyingHost(0.10f); // 10% (slight)
+        parameters.getParameter("low_cut")->setValueNotifyingHost(290.0f); // 290 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(3550.0f); // 3550 Hz
+        parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
+        parameters.getParameter("radio_noise")->setValueNotifyingHost(0.0f); // 0% (off by default)
         break;
 
     default:
@@ -1077,5 +1145,51 @@ void ReverbDelayPluginAudioProcessor::loadMechanicalNoise()
     else
     {
         DBG("Failed to create reader for mechanical noise binary data");
+    }
+}
+
+//==============================================================================
+// Load radio noise sample from embedded binary data
+void ReverbDelayPluginAudioProcessor::loadRadioNoise()
+{
+    // Load radio noise from embedded binary data
+    const char* sourceData = BinaryData::Radio_Noise_wav;
+    int dataSize = BinaryData::Radio_Noise_wavSize;
+
+    if (sourceData == nullptr || dataSize == 0)
+    {
+        DBG("Radio noise binary data not found - make sure to add Radio_Noise.wav to Projucer binary resources");
+        return;
+    }
+
+    // Create audio format manager and register basic formats
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+
+    // Create a memory input stream from the binary data
+    std::unique_ptr<juce::MemoryInputStream> inputStream(new juce::MemoryInputStream(sourceData, dataSize, false));
+
+    // Create reader for the WAV file from memory
+    std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(std::move(inputStream)));
+
+    if (reader != nullptr)
+    {
+        // Allocate buffer with same number of channels and length as the file
+        radioNoiseSample.setSize(static_cast<int>(reader->numChannels),
+                                 static_cast<int>(reader->lengthInSamples));
+
+        // Read the entire file into the buffer
+        reader->read(&radioNoiseSample,
+                     0,
+                     static_cast<int>(reader->lengthInSamples),
+                     0,
+                     true,
+                     true);
+
+        DBG("Radio noise loaded successfully from binary data: " + juce::String(reader->lengthInSamples) + " samples");
+    }
+    else
+    {
+        DBG("Failed to create reader for radio noise binary data");
     }
 }
