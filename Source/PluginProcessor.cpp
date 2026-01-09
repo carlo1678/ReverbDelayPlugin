@@ -999,12 +999,12 @@ void ReverbDelayPluginAudioProcessor::loadUnderwaterSound()
 void ReverbDelayPluginAudioProcessor::loadMechanicalNoise()
 {
     // Load mechanical noise from embedded binary data
-    const char* sourceData = BinaryData::mechanical_noise_wav;
-    int dataSize = BinaryData::mechanical_noise_wavSize;
+    const char* sourceData = BinaryData::Mechanical_Noise_wav;
+    int dataSize = BinaryData::Mechanical_Noise_wavSize;
 
     if (sourceData == nullptr || dataSize == 0)
     {
-        DBG("Mechanical noise binary data not found - make sure to add mechanical noise.wav to Projucer binary resources");
+        DBG("Mechanical noise binary data not found - make sure to add Mechanical_Noise.wav to Projucer binary resources");
         return;
     }
 
