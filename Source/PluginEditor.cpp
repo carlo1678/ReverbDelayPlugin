@@ -112,6 +112,31 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     timeModeLabel.attachToComponent(&timeModeBox, false);
     addAndMakeVisible(timeModeLabel);
 
+    // Setup Pendulum Speed selector
+    pendulumSpeedBox.addItem("1 Bar", 1);
+    pendulumSpeedBox.addItem("1/2 Bar", 2);
+    pendulumSpeedBox.addItem("1/4 Bar", 3);
+    pendulumSpeedBox.addItem("1/8 Bar", 4);
+    pendulumSpeedBox.addItem("1/16 Bar", 5);
+    pendulumSpeedBox.setSelectedId(3); // Default to 1/4 Bar
+    pendulumSpeedBox.setColour(juce::ComboBox::backgroundColourId, juce::Colours::black);
+    pendulumSpeedBox.setColour(juce::ComboBox::textColourId, juce::Colours::white);
+    pendulumSpeedBox.setColour(juce::ComboBox::outlineColourId, juce::Colours::white);
+    pendulumSpeedBox.setColour(juce::ComboBox::arrowColourId, juce::Colours::white);
+    addAndMakeVisible(pendulumSpeedBox);
+    pendulumSpeedAttachment.reset(new juce::AudioProcessorValueTreeState::ComboBoxAttachment(
+        audioProcessor.parameters, "pendulum_speed", pendulumSpeedBox));
+
+    pendulumSpeedLabel.setText("PENDULUM SPEED", juce::dontSendNotification);
+    pendulumSpeedLabel.setJustificationType(juce::Justification::centred);
+    pendulumSpeedLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    pendulumSpeedLabel.setFont(juce::Font(12.0f, juce::Font::bold));
+    addAndMakeVisible(pendulumSpeedLabel);
+
+    // Initially hide pendulum speed control (shown when pendulum pan is enabled)
+    pendulumSpeedBox.setVisible(false);
+    pendulumSpeedLabel.setVisible(false);
+
     // Setup Preset selector
     auto presetNames = audioProcessor.getPresetNames();
     for (int i = 0; i < presetNames.size(); ++i)
@@ -149,8 +174,9 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
             flutterSlider.setVisible(true); // Always visible (in MOD box or Preset EFX box)
             mechanicalNoiseSlider.setVisible(isTapePreset);
 
-            // Show Preset Specific EFX box if any preset-specific controls are active
-            presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset);
+            // Show Preset Specific EFX box if any preset-specific controls or pendulum pan is active
+            bool isPendulumEnabled = pendulumPanButton.getToggleState();
+            presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset || isPendulumEnabled);
 
             // Trigger layout update
             resized();
@@ -234,6 +260,24 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     addAndMakeVisible(pendulumPanButton);
     pendulumPanAttachment.reset(new juce::AudioProcessorValueTreeState::ButtonAttachment(
         audioProcessor.parameters, "pendulum_pan", pendulumPanButton));
+
+    // Show/hide pendulum speed control when pendulum pan is toggled
+    pendulumPanButton.onClick = [this]
+    {
+        bool isPendulumEnabled = pendulumPanButton.getToggleState();
+        pendulumSpeedBox.setVisible(isPendulumEnabled);
+        pendulumSpeedLabel.setVisible(isPendulumEnabled);
+
+        // Show Preset Specific EFX box if pendulum is enabled or if preset-specific controls are visible
+        int selectedId = presetBox.getSelectedId();
+        bool isTelephonePreset = (selectedId == 1);
+        bool isUnderwaterPreset = (selectedId == 2);
+        bool isTapePreset = (selectedId == 3);
+        presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset || isPendulumEnabled);
+
+        // Trigger layout update
+        resized();
+    };
 
     // Setup Noise Slider (telephone preset only)
     setupSlider(noiseSlider, noiseLabel, "NOISE", "%");
@@ -499,6 +543,15 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
 
             // Mechanical Noise knob (right third)
             mechanicalNoiseSlider.setBounds(presetEfxContentArea.reduced(15));
+        }
+
+        // Pendulum speed control (centered dropdown)
+        if (pendulumSpeedBox.isVisible())
+        {
+            // Center the pendulum speed dropdown
+            auto pendulumSpeedArea = presetEfxContentArea.withSizeKeepingCentre(180, 40);
+            pendulumSpeedLabel.setBounds(pendulumSpeedArea.removeFromTop(20));
+            pendulumSpeedBox.setBounds(pendulumSpeedArea);
         }
 
         bounds.removeFromTop(10);

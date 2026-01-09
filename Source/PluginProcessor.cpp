@@ -38,6 +38,7 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     wowParam = parameters.getRawParameterValue("wow");
     flutterParam = parameters.getRawParameterValue("flutter");
     pendulumPanParam = parameters.getRawParameterValue("pendulum_pan");
+    pendulumSpeedParam = parameters.getRawParameterValue("pendulum_speed");
     noiseParam = parameters.getRawParameterValue("noise");
     phaserMixParam = parameters.getRawParameterValue("phaser_mix");
     phaserSpeedParam = parameters.getRawParameterValue("phaser_speed");
@@ -325,7 +326,6 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     }
 
     // Pendulum Panning: Calculate frequency for BPM-synced auto-pan
-    // One full cycle (left->right->left) = 2 bars = 8 beats
     float pendulumFreq = 0.0f;
     if (pendulumPanEnabled)
     {
@@ -340,9 +340,24 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
             }
         }
 
-        // Calculate frequency: 1 cycle per 2 bars = 1 cycle per 8 beats
+        // Get pendulum speed setting (0=1 Bar, 1=1/2 Bar, 2=1/4 Bar, 3=1/8 Bar, 4=1/16 Bar)
+        int speedIndex = static_cast<int>(pendulumSpeedParam->load());
+
+        // Calculate beats per cycle based on speed selection
+        float beatsPerCycle = 4.0f; // Default: 1 bar = 4 beats
+        switch (speedIndex)
+        {
+            case 0: beatsPerCycle = 4.0f; break;   // 1 Bar = 4 beats
+            case 1: beatsPerCycle = 2.0f; break;   // 1/2 Bar = 2 beats
+            case 2: beatsPerCycle = 1.0f; break;   // 1/4 Bar = 1 beat
+            case 3: beatsPerCycle = 0.5f; break;   // 1/8 Bar = 0.5 beats
+            case 4: beatsPerCycle = 0.25f; break;  // 1/16 Bar = 0.25 beats
+            default: beatsPerCycle = 1.0f; break;
+        }
+
+        // Calculate frequency: Hz = (BPM / 60) / beatsPerCycle
         double beatsPerSecond = bpm / 60.0;
-        pendulumFreq = static_cast<float>(beatsPerSecond / 8.0); // Hz for one cycle per 2 bars
+        pendulumFreq = static_cast<float>(beatsPerSecond / beatsPerCycle);
     }
 
     // Process stereo channels
@@ -378,25 +393,13 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 rightDelayed = highCutFilterRight.get<1>().processSample(rightDelayed);
                 rightDelayed = highCutFilterRight.get<2>().processSample(rightDelayed);
 
-                // Apply pendulum panning if enabled (even in ping-pong mode)
+                // Apply pendulum panning if enabled (update phase)
                 if (pendulumPanEnabled)
                 {
                     // Update pendulum phase
                     pendulumPhase += (2.0f * juce::MathConstants<float>::pi * pendulumFreq) / static_cast<float>(lastSampleRate);
                     if (pendulumPhase >= 2.0f * juce::MathConstants<float>::pi)
                         pendulumPhase -= 2.0f * juce::MathConstants<float>::pi;
-
-                    // Calculate pan position using sine wave (-1 to +1)
-                    float panPosition = std::sin(pendulumPhase);
-
-                    // Convert pan position to stereo gains (constant power panning)
-                    float angle = (panPosition + 1.0f) * 0.25f * juce::MathConstants<float>::pi;
-                    float leftGain = std::cos(angle);
-                    float rightGain = std::sin(angle);
-
-                    // Apply panning to delayed signal
-                    leftDelayed *= leftGain;
-                    rightDelayed *= rightGain;
                 }
 
                 // Apply noise/static (telephone effect) using loaded audio sample
@@ -506,8 +509,30 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 }
 
                 // Mix dry and wet (swapped for ping pong)
-                leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
-                rightChannel[sample] = rightInput * (1.0f - mix) + rightDelayed * mix;
+                float finalLeft = leftInput * (1.0f - mix) + leftDelayed * mix;
+                float finalRight = rightInput * (1.0f - mix) + rightDelayed * mix;
+
+                // Apply pendulum panning to final mixed output
+                if (pendulumPanEnabled)
+                {
+                    // Calculate pan position using sine wave (-1 to +1)
+                    float panPosition = std::sin(pendulumPhase);
+
+                    // Convert pan position to stereo gains (constant power panning)
+                    // panPosition: -1 = full left, 0 = center, +1 = full right
+                    float angle = (panPosition + 1.0f) * 0.25f * juce::MathConstants<float>::pi; // Map to 0 to pi/2
+                    float leftGain = std::cos(angle);
+                    float rightGain = std::sin(angle);
+
+                    // Apply panning to final output
+                    leftChannel[sample] = finalLeft * leftGain;
+                    rightChannel[sample] = finalRight * rightGain;
+                }
+                else
+                {
+                    leftChannel[sample] = finalLeft;
+                    rightChannel[sample] = finalRight;
+                }
             }
         }
         else
@@ -543,19 +568,6 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     pendulumPhase += (2.0f * juce::MathConstants<float>::pi * pendulumFreq) / static_cast<float>(lastSampleRate);
                     if (pendulumPhase >= 2.0f * juce::MathConstants<float>::pi)
                         pendulumPhase -= 2.0f * juce::MathConstants<float>::pi;
-
-                    // Calculate pan position using sine wave (-1 to +1)
-                    float panPosition = std::sin(pendulumPhase);
-
-                    // Convert pan position to stereo gains (constant power panning)
-                    // panPosition: -1 = full left, 0 = center, +1 = full right
-                    float angle = (panPosition + 1.0f) * 0.25f * juce::MathConstants<float>::pi; // Map to 0 to pi/2
-                    float leftGain = std::cos(angle);
-                    float rightGain = std::sin(angle);
-
-                    // Apply panning to delayed signal
-                    leftDelayed *= leftGain;
-                    rightDelayed *= rightGain;
                 }
 
                 // Apply noise/static (telephone effect) using loaded audio sample
@@ -664,8 +676,31 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                         mechanicalNoiseReadPos = 0;
                 }
 
-                leftChannel[sample] = leftInput * (1.0f - mix) + leftDelayed * mix;
-                rightChannel[sample] = rightInput * (1.0f - mix) + rightDelayed * mix;
+                // Mix dry and wet signals
+                float finalLeft = leftInput * (1.0f - mix) + leftDelayed * mix;
+                float finalRight = rightInput * (1.0f - mix) + rightDelayed * mix;
+
+                // Apply pendulum panning to final mixed output
+                if (pendulumPanEnabled)
+                {
+                    // Calculate pan position using sine wave (-1 to +1)
+                    float panPosition = std::sin(pendulumPhase);
+
+                    // Convert pan position to stereo gains (constant power panning)
+                    // panPosition: -1 = full left, 0 = center, +1 = full right
+                    float angle = (panPosition + 1.0f) * 0.25f * juce::MathConstants<float>::pi; // Map to 0 to pi/2
+                    float leftGain = std::cos(angle);
+                    float rightGain = std::sin(angle);
+
+                    // Apply panning to final output
+                    leftChannel[sample] = finalLeft * leftGain;
+                    rightChannel[sample] = finalRight * rightGain;
+                }
+                else
+                {
+                    leftChannel[sample] = finalLeft;
+                    rightChannel[sample] = finalRight;
+                }
             }
         }
     }
@@ -778,6 +813,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     // Pendulum Panning (auto-pan synced to BPM)
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         "pendulum_pan", "Pendulum Pan", false));
+
+    // Pendulum Speed (tempo-synced divisions)
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        "pendulum_speed", "Pendulum Speed",
+        juce::StringArray{ "1 Bar", "1/2 Bar", "1/4 Bar", "1/8 Bar", "1/16 Bar" }, 2)); // Default to 1/4 Bar
 
     // Noise/Static (telephone preset only) - 0 to 100%
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
