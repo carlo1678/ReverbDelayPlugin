@@ -107,6 +107,7 @@ private:
     juce::Label wowLabel;
     juce::Label flutterLabel;
     juce::Label modLabel;  // "MOD" title for the mod box
+    juce::Label presetEfxLabel;  // "Preset Specific EFX" title for the preset effects box
     juce::Label presetLabel;
     juce::Label noiseLabel;
     juce::Label phaserMixLabel;

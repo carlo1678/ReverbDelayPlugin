@@ -139,6 +139,9 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
             phaserSpeedSlider.setVisible(isTelephonePreset);
             underwaterMixSlider.setVisible(isUnderwaterPreset);
 
+            // Show Preset Specific EFX box if any preset-specific controls are active
+            presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset);
+
             // Trigger layout update
             resized();
         }
@@ -183,6 +186,14 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     modLabel.setColour(juce::Label::textColourId, juce::Colours::white);
     modLabel.setFont(juce::Font(18.0f, juce::Font::bold));
     addAndMakeVisible(modLabel);
+
+    // Setup Preset Specific EFX label
+    presetEfxLabel.setText("Preset Specific EFX", juce::dontSendNotification);
+    presetEfxLabel.setJustificationType(juce::Justification::centred);
+    presetEfxLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    presetEfxLabel.setFont(juce::Font(16.0f, juce::Font::bold));
+    addAndMakeVisible(presetEfxLabel);
+    presetEfxLabel.setVisible(false); // Hidden by default
 
     // Setup Reverse Button
     reverseDelayButton.setButtonText("REVERSE");
@@ -232,8 +243,8 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         audioProcessor.parameters, "phaser_speed", phaserSpeedSlider));
     phaserSpeedSlider.setVisible(false); // Hidden by default
 
-    // Setup Underwater Mix Slider (underwater preset only)
-    setupSlider(underwaterMixSlider, underwaterMixLabel, "UNDERWATER MIX", "%");
+    // Setup Underwater Mix Slider (underwater preset only) - labeled as "Bubbles"
+    setupSlider(underwaterMixSlider, underwaterMixLabel, "BUBBLES", "%");
     underwaterMixAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
         audioProcessor.parameters, "underwater_mix", underwaterMixSlider));
     underwaterMixSlider.setVisible(false); // Hidden by default
@@ -270,6 +281,7 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         phaserMixSlider.setVisible(false);
         phaserSpeedSlider.setVisible(false);
         underwaterMixSlider.setVisible(false);
+        presetEfxLabel.setVisible(false);
     };
     addAndMakeVisible(resetButton);
 }
@@ -321,6 +333,21 @@ void ReverbDelayPluginAudioProcessorEditor::paint(juce::Graphics& g)
     // Draw rounded rectangle border for MOD box
     g.setColour(juce::Colours::white);
     g.drawRoundedRectangle(modBoxSection.toFloat(), 8.0f, 2.0f);
+
+    // Draw Preset Specific EFX box border (only when visible)
+    if (presetEfxLabel.isVisible())
+    {
+        auto presetEfxBoxBounds = getLocalBounds();
+        presetEfxBoxBounds.reduce(30, 30);
+        presetEfxBoxBounds.removeFromTop(60 + 10 + 120 + 20 + 180 + 10 + 55 + 10); // Skip all previous sections
+
+        auto presetEfxBoxSection = presetEfxBoxBounds.removeFromTop(160);
+        presetEfxBoxSection.reduce(10, 10); // Add some padding
+
+        // Draw rounded rectangle border for Preset Specific EFX box
+        g.setColour(juce::Colours::white);
+        g.drawRoundedRectangle(presetEfxBoxSection.toFloat(), 8.0f, 2.0f);
+    }
 }
 
 void ReverbDelayPluginAudioProcessorEditor::resized()
@@ -400,31 +427,39 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
 
     bounds.removeFromTop(10);
 
-    // Telephone controls row (only visible when telephone preset is selected)
-    if (noiseSlider.isVisible())
+    // Preset Specific EFX box (only visible when preset-specific controls are active)
+    if (presetEfxLabel.isVisible())
     {
-        auto telephoneRow = bounds.removeFromTop(140);
-        int telephoneKnobWidth = telephoneRow.getWidth() / 3;
+        auto presetEfxRow = bounds.removeFromTop(160);
 
-        // Noise knob (left third)
-        noiseSlider.setBounds(telephoneRow.removeFromLeft(telephoneKnobWidth).reduced(20));
+        // Preset Specific EFX title label at top of box (with spacing from border)
+        presetEfxRow.removeFromTop(5); // Add spacing between border and label
+        presetEfxLabel.setBounds(presetEfxRow.removeFromTop(30));
 
-        // Phaser Mix knob (center third)
-        phaserMixSlider.setBounds(telephoneRow.removeFromLeft(telephoneKnobWidth).reduced(20));
+        // Content area inside the box
+        auto presetEfxContentArea = presetEfxRow.removeFromTop(110);
 
-        // Phaser Speed knob (right third)
-        phaserSpeedSlider.setBounds(telephoneRow.reduced(20));
+        // Telephone controls (3 knobs side by side)
+        if (noiseSlider.isVisible())
+        {
+            int telephoneKnobWidth = presetEfxContentArea.getWidth() / 3;
 
-        bounds.removeFromTop(10);
-    }
+            // Noise knob (left third)
+            noiseSlider.setBounds(presetEfxContentArea.removeFromLeft(telephoneKnobWidth).reduced(15));
 
-    // Underwater controls row (only visible when underwater preset is selected)
-    if (underwaterMixSlider.isVisible())
-    {
-        auto underwaterRow = bounds.removeFromTop(140);
+            // Phaser Mix knob (center third)
+            phaserMixSlider.setBounds(presetEfxContentArea.removeFromLeft(telephoneKnobWidth).reduced(15));
 
-        // Underwater Mix knob (centered)
-        underwaterMixSlider.setBounds(underwaterRow.withSizeKeepingCentre(130, 120));
+            // Phaser Speed knob (right third)
+            phaserSpeedSlider.setBounds(presetEfxContentArea.reduced(15));
+        }
+
+        // Underwater controls (1 knob centered)
+        if (underwaterMixSlider.isVisible())
+        {
+            // Bubbles knob (centered)
+            underwaterMixSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(120, 110));
+        }
 
         bounds.removeFromTop(10);
     }
