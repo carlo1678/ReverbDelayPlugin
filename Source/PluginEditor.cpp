@@ -115,19 +115,21 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     // Setup Pendulum Speed Slider (small knob, always visible below pendulum pan button)
     setupSlider(pendulumSpeedSlider, pendulumSpeedLabel, "SPEED", "");
 
-    // Configure as discrete values (0-4 for different tempo divisions)
-    pendulumSpeedSlider.setRange(0.0, 4.0, 1.0);
-    pendulumSpeedSlider.setValue(2.0); // Default to 1/4 Bar
+    // Configure as discrete values (0-6 for different tempo divisions)
+    pendulumSpeedSlider.setRange(0.0, 6.0, 1.0);
+    pendulumSpeedSlider.setValue(4.0); // Default to 1/4 Bar
 
     // Custom text display for tempo divisions
     pendulumSpeedSlider.textFromValueFunction = [](double value) {
         int index = static_cast<int>(value);
         switch (index) {
-            case 0: return juce::String("1 Bar");
-            case 1: return juce::String("1/2");
-            case 2: return juce::String("1/4");
-            case 3: return juce::String("1/8");
-            case 4: return juce::String("1/16");
+            case 0: return juce::String("4 Bar");
+            case 1: return juce::String("2 Bar");
+            case 2: return juce::String("1 Bar");
+            case 3: return juce::String("1/2");
+            case 4: return juce::String("1/4");
+            case 5: return juce::String("1/8");
+            case 6: return juce::String("1/16");
             default: return juce::String("1/4");
         }
     };
@@ -411,6 +413,9 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     auto bounds = getLocalBounds();
     bounds.reduce(30, 30);
 
+    // Reserve bottom area first to keep it in consistent position
+    auto bottomRow = bounds.removeFromBottom(140);
+
     // Title space
     auto titleArea = bounds.removeFromTop(60);
 
@@ -551,7 +556,7 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     }
 
     // Bottom row: PING PONG - PENDULUM PAN (with speed knob) - REVERSE
-    auto bottomRow = bounds.removeFromTop(140); // Increased height for pendulum speed knob
+    // (already reserved at top of resized() to keep consistent position)
     int buttonWidth = bottomRow.getWidth() / 3;
 
     // Ping Pong button (left third)

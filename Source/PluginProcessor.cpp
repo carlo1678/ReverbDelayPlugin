@@ -343,18 +343,20 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
             }
         }
 
-        // Get pendulum speed setting (0=1 Bar, 1=1/2 Bar, 2=1/4 Bar, 3=1/8 Bar, 4=1/16 Bar)
+        // Get pendulum speed setting (0=4 Bar, 1=2 Bar, 2=1 Bar, 3=1/2, 4=1/4, 5=1/8, 6=1/16)
         int speedIndex = static_cast<int>(pendulumSpeedParam->load());
 
         // Calculate beats per cycle based on speed selection
-        float beatsPerCycle = 4.0f; // Default: 1 bar = 4 beats
+        float beatsPerCycle = 1.0f; // Default: 1/4 bar = 1 beat
         switch (speedIndex)
         {
-            case 0: beatsPerCycle = 4.0f; break;   // 1 Bar = 4 beats
-            case 1: beatsPerCycle = 2.0f; break;   // 1/2 Bar = 2 beats
-            case 2: beatsPerCycle = 1.0f; break;   // 1/4 Bar = 1 beat
-            case 3: beatsPerCycle = 0.5f; break;   // 1/8 Bar = 0.5 beats
-            case 4: beatsPerCycle = 0.25f; break;  // 1/16 Bar = 0.25 beats
+            case 0: beatsPerCycle = 16.0f; break;  // 4 Bar = 16 beats
+            case 1: beatsPerCycle = 8.0f; break;   // 2 Bar = 8 beats
+            case 2: beatsPerCycle = 4.0f; break;   // 1 Bar = 4 beats
+            case 3: beatsPerCycle = 2.0f; break;   // 1/2 Bar = 2 beats
+            case 4: beatsPerCycle = 1.0f; break;   // 1/4 Bar = 1 beat
+            case 5: beatsPerCycle = 0.5f; break;   // 1/8 Bar = 0.5 beats
+            case 6: beatsPerCycle = 0.25f; break;  // 1/16 Bar = 0.25 beats
             default: beatsPerCycle = 1.0f; break;
         }
 
@@ -877,11 +879,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         "pendulum_pan", "Pendulum Pan", false));
 
-    // Pendulum Speed (tempo-synced divisions: 0=1 Bar, 1=1/2, 2=1/4, 3=1/8, 4=1/16)
+    // Pendulum Speed (tempo-synced divisions: 0=4 Bar, 1=2 Bar, 2=1 Bar, 3=1/2, 4=1/4, 5=1/8, 6=1/16)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "pendulum_speed", "Pendulum Speed",
-        juce::NormalisableRange<float>(0.0f, 4.0f, 1.0f),
-        2.0f)); // Default to 1/4 Bar (index 2)
+        juce::NormalisableRange<float>(0.0f, 6.0f, 1.0f),
+        4.0f)); // Default to 1/4 Bar (index 4)
 
     // Noise/Static (telephone preset only) - 0 to 100%
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
