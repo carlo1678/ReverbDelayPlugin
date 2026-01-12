@@ -112,30 +112,28 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     timeModeLabel.attachToComponent(&timeModeBox, false);
     addAndMakeVisible(timeModeLabel);
 
-    // Setup Pendulum Speed selector
-    pendulumSpeedBox.addItem("1 Bar", 1);
-    pendulumSpeedBox.addItem("1/2 Bar", 2);
-    pendulumSpeedBox.addItem("1/4 Bar", 3);
-    pendulumSpeedBox.addItem("1/8 Bar", 4);
-    pendulumSpeedBox.addItem("1/16 Bar", 5);
-    pendulumSpeedBox.setSelectedId(3); // Default to 1/4 Bar
-    pendulumSpeedBox.setColour(juce::ComboBox::backgroundColourId, juce::Colours::black);
-    pendulumSpeedBox.setColour(juce::ComboBox::textColourId, juce::Colours::white);
-    pendulumSpeedBox.setColour(juce::ComboBox::outlineColourId, juce::Colours::white);
-    pendulumSpeedBox.setColour(juce::ComboBox::arrowColourId, juce::Colours::white);
-    addAndMakeVisible(pendulumSpeedBox);
-    pendulumSpeedAttachment.reset(new juce::AudioProcessorValueTreeState::ComboBoxAttachment(
-        audioProcessor.parameters, "pendulum_speed", pendulumSpeedBox));
+    // Setup Pendulum Speed Slider (small knob, always visible below pendulum pan button)
+    setupSlider(pendulumSpeedSlider, pendulumSpeedLabel, "SPEED", "");
 
-    pendulumSpeedLabel.setText("PENDULUM SPEED", juce::dontSendNotification);
-    pendulumSpeedLabel.setJustificationType(juce::Justification::centred);
-    pendulumSpeedLabel.setColour(juce::Label::textColourId, juce::Colours::white);
-    pendulumSpeedLabel.setFont(juce::Font(12.0f, juce::Font::bold));
-    addAndMakeVisible(pendulumSpeedLabel);
+    // Configure as discrete values (0-4 for different tempo divisions)
+    pendulumSpeedSlider.setRange(0.0, 4.0, 1.0);
+    pendulumSpeedSlider.setValue(2.0); // Default to 1/4 Bar
 
-    // Initially hide pendulum speed control (shown when pendulum pan is enabled)
-    pendulumSpeedBox.setVisible(false);
-    pendulumSpeedLabel.setVisible(false);
+    // Custom text display for tempo divisions
+    pendulumSpeedSlider.textFromValueFunction = [](double value) {
+        int index = static_cast<int>(value);
+        switch (index) {
+            case 0: return juce::String("1 Bar");
+            case 1: return juce::String("1/2");
+            case 2: return juce::String("1/4");
+            case 3: return juce::String("1/8");
+            case 4: return juce::String("1/16");
+            default: return juce::String("1/4");
+        }
+    };
+
+    pendulumSpeedAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "pendulum_speed", pendulumSpeedSlider));
 
     // Setup Preset selector
     auto presetNames = audioProcessor.getPresetNames();
@@ -178,9 +176,8 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
             // Radio preset controls
             radioNoiseSlider.setVisible(isRadioPreset);
 
-            // Show Preset Specific EFX box if any preset-specific controls or pendulum pan is active
-            bool isPendulumEnabled = pendulumPanButton.getToggleState();
-            presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset || isRadioPreset || isPendulumEnabled);
+            // Show Preset Specific EFX box if any preset-specific controls are active
+            presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset || isRadioPreset);
 
             // Trigger layout update
             resized();
@@ -264,25 +261,6 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     addAndMakeVisible(pendulumPanButton);
     pendulumPanAttachment.reset(new juce::AudioProcessorValueTreeState::ButtonAttachment(
         audioProcessor.parameters, "pendulum_pan", pendulumPanButton));
-
-    // Show/hide pendulum speed control when pendulum pan is toggled
-    pendulumPanButton.onClick = [this]
-    {
-        bool isPendulumEnabled = pendulumPanButton.getToggleState();
-        pendulumSpeedBox.setVisible(isPendulumEnabled);
-        pendulumSpeedLabel.setVisible(isPendulumEnabled);
-
-        // Show Preset Specific EFX box if pendulum is enabled or if preset-specific controls are visible
-        int selectedId = presetBox.getSelectedId();
-        bool isTelephonePreset = (selectedId == 1);
-        bool isUnderwaterPreset = (selectedId == 2);
-        bool isTapePreset = (selectedId == 3);
-        bool isRadioPreset = (selectedId == 4);
-        presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset || isRadioPreset || isPendulumEnabled);
-
-        // Trigger layout update
-        resized();
-    };
 
     // Setup Noise Slider (telephone preset only)
     setupSlider(noiseSlider, noiseLabel, "NOISE", "%");
@@ -379,6 +357,7 @@ ReverbDelayPluginAudioProcessorEditor::~ReverbDelayPluginAudioProcessorEditor()
     underwaterMixSlider.setLookAndFeel(nullptr);
     mechanicalNoiseSlider.setLookAndFeel(nullptr);
     radioNoiseSlider.setLookAndFeel(nullptr);
+    pendulumSpeedSlider.setLookAndFeel(nullptr);
 }
 
 //==============================================================================
@@ -568,30 +547,26 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
             radioNoiseSlider.setBounds(radioArea.withSizeKeepingCentre(110, 90));
         }
 
-        // Pendulum speed control (centered dropdown)
-        if (pendulumSpeedBox.isVisible())
-        {
-            // Center the pendulum speed dropdown
-            auto pendulumSpeedArea = presetEfxContentArea.withSizeKeepingCentre(180, 40);
-            pendulumSpeedLabel.setBounds(pendulumSpeedArea.removeFromTop(20));
-            pendulumSpeedBox.setBounds(pendulumSpeedArea);
-        }
-
         bounds.removeFromTop(10);
     }
 
-    // Bottom row: PING PONG - PENDULUM PAN - REVERSE
-    auto bottomRow = bounds.removeFromTop(70);
+    // Bottom row: PING PONG - PENDULUM PAN (with speed knob) - REVERSE
+    auto bottomRow = bounds.removeFromTop(140); // Increased height for pendulum speed knob
     int buttonWidth = bottomRow.getWidth() / 3;
 
     // Ping Pong button (left third)
     auto pingPongButtonArea = bottomRow.removeFromLeft(buttonWidth);
-    pingPongButton.setBounds(pingPongButtonArea.withSizeKeepingCentre(120, 28));
+    pingPongButton.setBounds(pingPongButtonArea.removeFromTop(28).withSizeKeepingCentre(120, 28));
 
-    // Pendulum Pan button (center third)
+    // Pendulum Pan button (center third) with speed knob below
     auto pendulumPanButtonArea = bottomRow.removeFromLeft(buttonWidth);
-    pendulumPanButton.setBounds(pendulumPanButtonArea.withSizeKeepingCentre(140, 28));
+    pendulumPanButton.setBounds(pendulumPanButtonArea.removeFromTop(28).withSizeKeepingCentre(140, 28));
+
+    // Pendulum Speed knob (small knob centered below button)
+    pendulumPanButtonArea.removeFromTop(10); // Small gap between button and knob
+    pendulumSpeedSlider.setBounds(pendulumPanButtonArea.removeFromTop(80).withSizeKeepingCentre(70, 80));
 
     // Reverse button (right third)
-    reverseDelayButton.setBounds(bottomRow.withSizeKeepingCentre(120, 28));
+    auto reverseButtonArea = bottomRow;
+    reverseDelayButton.setBounds(reverseButtonArea.removeFromTop(28).withSizeKeepingCentre(120, 28));
 }

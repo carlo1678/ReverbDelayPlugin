@@ -71,9 +71,6 @@ private:
     // Preset selector
     juce::ComboBox presetBox;
 
-    // Pendulum Speed selector
-    juce::ComboBox pendulumSpeedBox;
-
     // Custom knob look and feel
     PedalKnobLookAndFeel pedalKnobLAF;
 
@@ -91,6 +88,7 @@ private:
     juce::Slider underwaterMixSlider;
     juce::Slider mechanicalNoiseSlider;
     juce::Slider radioNoiseSlider;
+    juce::Slider pendulumSpeedSlider;
 
     // Toggle buttons
     juce::ToggleButton reverseDelayButton;
@@ -140,7 +138,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> pingPongAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> pendulumPanAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> timeModeAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> pendulumSpeedAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> pendulumSpeedAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ReverbDelayPluginAudioProcessorEditor)
 };

@@ -877,10 +877,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         "pendulum_pan", "Pendulum Pan", false));
 
-    // Pendulum Speed (tempo-synced divisions)
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+    // Pendulum Speed (tempo-synced divisions: 0=1 Bar, 1=1/2, 2=1/4, 3=1/8, 4=1/16)
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "pendulum_speed", "Pendulum Speed",
-        juce::StringArray{ "1 Bar", "1/2 Bar", "1/4 Bar", "1/8 Bar", "1/16 Bar" }, 2)); // Default to 1/4 Bar
+        juce::NormalisableRange<float>(0.0f, 4.0f, 1.0f),
+        2.0f)); // Default to 1/4 Bar (index 2)
 
     // Noise/Static (telephone preset only) - 0 to 100%
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
