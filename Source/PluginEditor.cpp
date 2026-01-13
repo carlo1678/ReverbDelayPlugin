@@ -255,6 +255,16 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     pingPongAttachment.reset(new juce::AudioProcessorValueTreeState::ButtonAttachment(
         audioProcessor.parameters, "ping_pong", pingPongButton));
 
+    // Make ping pong and pendulum pan mutually exclusive
+    pingPongButton.onClick = [this]
+    {
+        if (pingPongButton.getToggleState())
+        {
+            // If ping pong is enabled, disable pendulum pan
+            audioProcessor.parameters.getParameter("pendulum_pan")->setValueNotifyingHost(0.0f);
+        }
+    };
+
     // Setup Pendulum Pan Button
     pendulumPanButton.setButtonText("PENDULUM PAN");
     pendulumPanButton.setColour(juce::ToggleButton::textColourId, juce::Colours::white);
@@ -263,6 +273,16 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     addAndMakeVisible(pendulumPanButton);
     pendulumPanAttachment.reset(new juce::AudioProcessorValueTreeState::ButtonAttachment(
         audioProcessor.parameters, "pendulum_pan", pendulumPanButton));
+
+    // Make pendulum pan and ping pong mutually exclusive
+    pendulumPanButton.onClick = [this]
+    {
+        if (pendulumPanButton.getToggleState())
+        {
+            // If pendulum pan is enabled, disable ping pong
+            audioProcessor.parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f);
+        }
+    };
 
     // Setup Noise Slider (telephone preset only)
     setupSlider(noiseSlider, noiseLabel, "NOISE", "%");
