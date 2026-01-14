@@ -3,6 +3,18 @@
 #include <cmath>      // For std::sin
 
 DelayLine::DelayLine()
+    : bufferSize(0),
+      writePosition(0),
+      sampleRate(44100.0),
+      currentDelayTime(500.0f),
+      currentFeedback(0.3f),
+      reverseCapturePos(0),
+      reversePlaybackPos(0),
+      reverseChunkSize(0),
+      reverseIsCapturing(true),
+      reverseBufferReady(false),
+      wowPhase(0.0f),
+      flutterPhase(0.0f)
 {
 }
 
