@@ -137,6 +137,33 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     pendulumSpeedAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
         audioProcessor.parameters, "pendulum_speed", pendulumSpeedSlider));
 
+    // Setup Delay Pitch Slider (rotary knob, available on all presets)
+    setupSlider(delayPitchSlider, delayPitchLabel, "PITCH", "");
+
+    // Configure as discrete values (0-8 for musical intervals)
+    delayPitchSlider.setRange(0.0, 8.0, 1.0);
+    delayPitchSlider.setValue(4.0); // Default to 0 semitones (unison)
+
+    // Custom text display for musical intervals
+    delayPitchSlider.textFromValueFunction = [](double value) {
+        int index = static_cast<int>(value);
+        switch (index) {
+            case 0: return juce::String("-2 Oct");
+            case 1: return juce::String("-1 Oct");
+            case 2: return juce::String("-P5");
+            case 3: return juce::String("-P4");
+            case 4: return juce::String("0");
+            case 5: return juce::String("+P4");
+            case 6: return juce::String("+P5");
+            case 7: return juce::String("+1 Oct");
+            case 8: return juce::String("+2 Oct");
+            default: return juce::String("0");
+        }
+    };
+
+    delayPitchAttachment.reset(new juce::AudioProcessorValueTreeState::SliderAttachment(
+        audioProcessor.parameters, "delay_pitch", delayPitchSlider));
+
     // Setup Preset selector
     auto presetNames = audioProcessor.getPresetNames();
     for (int i = 0; i < presetNames.size(); ++i)
@@ -454,19 +481,23 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
 
     bounds.removeFromTop(10);
 
-    // Top row: TIME - MIX - FEEDBACK
+    // Top row: TIME - MIX - FEEDBACK - PITCH
     auto topRow = bounds.removeFromTop(120);
-    int topSectionWidth = topRow.getWidth() / 3;
+    int topSectionWidth = topRow.getWidth() / 4;
 
-    // TIME knob (left section)
-    delayTimeSlider.setBounds(topRow.removeFromLeft(topSectionWidth).reduced(20));
+    // TIME knob (1st section)
+    delayTimeSlider.setBounds(topRow.removeFromLeft(topSectionWidth).reduced(15));
 
-    // MIX knob (center section)
+    // MIX knob (2nd section)
     auto mixSection = topRow.removeFromLeft(topSectionWidth);
-    mixSlider.setBounds(mixSection.withSizeKeepingCentre(110, 110));
+    mixSlider.setBounds(mixSection.withSizeKeepingCentre(105, 105));
 
-    // FEEDBACK knob (right section)
-    delayFeedbackSlider.setBounds(topRow.reduced(20));
+    // FEEDBACK knob (3rd section)
+    auto feedbackSection = topRow.removeFromLeft(topSectionWidth);
+    delayFeedbackSlider.setBounds(feedbackSection.reduced(15));
+
+    // PITCH knob (4th section)
+    delayPitchSlider.setBounds(topRow.reduced(15));
 
     bounds.removeFromTop(20);
 

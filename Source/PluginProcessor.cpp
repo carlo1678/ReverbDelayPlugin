@@ -45,6 +45,7 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     underwaterMixParam = parameters.getRawParameterValue("underwater_mix");
     mechanicalNoiseParam = parameters.getRawParameterValue("mechanical_noise");
     radioNoiseParam = parameters.getRawParameterValue("radio_noise");
+    delayPitchParam = parameters.getRawParameterValue("delay_pitch");
 
     // Debug: Plugin constructor started
     DBG("========================================");
@@ -251,6 +252,24 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     float mechanicalNoise = mechanicalNoiseParam->load(); // 0-100 range
     float radioNoise = radioNoiseParam->load(); // 0-100 range
 
+    // Get delay pitch parameter and convert index to semitones
+    // Index 0-8 maps to: -24, -12, -7, -5, 0, +5, +7, +12, +24 semitones
+    int pitchIndex = static_cast<int>(delayPitchParam->load());
+    float pitchShift = 0.0f;
+    switch (pitchIndex)
+    {
+        case 0: pitchShift = -24.0f; break;  // -2 octaves
+        case 1: pitchShift = -12.0f; break;  // -1 octave
+        case 2: pitchShift = -7.0f; break;   // -Perfect 5th
+        case 3: pitchShift = -5.0f; break;   // -Perfect 4th
+        case 4: pitchShift = 0.0f; break;    // No pitch shift (unison)
+        case 5: pitchShift = 5.0f; break;    // +Perfect 4th
+        case 6: pitchShift = 7.0f; break;    // +Perfect 5th
+        case 7: pitchShift = 12.0f; break;   // +1 octave
+        case 8: pitchShift = 24.0f; break;   // +2 octaves
+        default: pitchShift = 0.0f; break;
+    }
+
     // Calculate dynamic envelope release based on feedback
     // Higher feedback = longer release time for overlay sounds
     // Map feedback (0-0.99) to release coefficient (0.995-0.9998)
@@ -408,8 +427,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 float rightInput = rightChannel[sample];
 
                 // Process delays (left delay goes to right, right delay goes to left)
-                float leftDelayed = delayLineLeft.processSample(rightInput, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
-                float rightDelayed = delayLineRight.processSample(leftInput, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
+                float leftDelayed = delayLineLeft.processSample(rightInput, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
+                float rightDelayed = delayLineRight.processSample(leftInput, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
 
                 // Apply filters to delayed signal
                 leftDelayed = lowCutFilterLeft.get<0>().processSample(leftDelayed);
@@ -620,8 +639,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 float leftInput = leftChannel[sample];
                 float rightInput = rightChannel[sample];
 
-                float leftDelayed = delayLineLeft.processSample(leftInput, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
-                float rightDelayed = delayLineRight.processSample(rightInput, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
+                float leftDelayed = delayLineLeft.processSample(leftInput, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
+                float rightDelayed = delayLineRight.processSample(rightInput, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
 
                 // Apply filters to delayed signal
                 leftDelayed = lowCutFilterLeft.get<0>().processSample(leftDelayed);
@@ -833,7 +852,7 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
             float input = leftChannel[sample];
-            float delayed = delayLineLeft.processSample(input, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
+            float delayed = delayLineLeft.processSample(input, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
 
             // Apply filters to delayed signal
             delayed = lowCutFilterLeft.get<0>().processSample(delayed);
@@ -966,6 +985,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     // Radio Noise (radio preset only) - 0 to 100%
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "radio_noise", "Radio Noise", 0.0f, 100.0f, 0.0f));
+
+    // Delay Pitch (available on all presets)
+    // Musical intervals: -2 octaves, -1 octave, -P5, -P4, 0, +P4, +P5, +1 octave, +2 octaves
+    // Semitones: -24, -12, -7, -5, 0, +5, +7, +12, +24
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "delay_pitch", "Delay Pitch",
+        juce::NormalisableRange<float>(0.0f, 8.0f, 1.0f),
+        4.0f)); // Default to 0 semitones (index 4)
 
     return { params.begin(), params.end() };
 }

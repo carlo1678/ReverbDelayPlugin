@@ -94,6 +94,7 @@ private:
     std::atomic<float>* underwaterMixParam = nullptr;
     std::atomic<float>* mechanicalNoiseParam = nullptr;
     std::atomic<float>* radioNoiseParam = nullptr;
+    std::atomic<float>* delayPitchParam = nullptr;
 
     // DSP Components
     DelayLine delayLineLeft;
