@@ -592,11 +592,11 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Apply pendulum panning to final mixed output
                 if (pendulumPanEnabled)
                 {
-                    // Calculate pan position using sine wave (-1 to +1)
-                    float panPosition = std::sin(pendulumPhase);
+                    // Calculate pan position using sine wave, limited to 75% width (-0.75 to +0.75)
+                    float panPosition = std::sin(pendulumPhase) * 0.75f;
 
                     // Convert pan position to stereo gains (constant power panning)
-                    // panPosition: -1 = full left, 0 = center, +1 = full right
+                    // panPosition: -0.75 = 75% left, 0 = center, +0.75 = 75% right
                     float angle = (panPosition + 1.0f) * 0.25f * juce::MathConstants<float>::pi; // Map to 0 to pi/2
                     float leftGain = std::cos(angle);
                     float rightGain = std::sin(angle);
@@ -804,11 +804,11 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Apply pendulum panning to final mixed output
                 if (pendulumPanEnabled)
                 {
-                    // Calculate pan position using sine wave (-1 to +1)
-                    float panPosition = std::sin(pendulumPhase);
+                    // Calculate pan position using sine wave, limited to 75% width (-0.75 to +0.75)
+                    float panPosition = std::sin(pendulumPhase) * 0.75f;
 
                     // Convert pan position to stereo gains (constant power panning)
-                    // panPosition: -1 = full left, 0 = center, +1 = full right
+                    // panPosition: -0.75 = 75% left, 0 = center, +0.75 = 75% right
                     float angle = (panPosition + 1.0f) * 0.25f * juce::MathConstants<float>::pi; // Map to 0 to pi/2
                     float leftGain = std::cos(angle);
                     float rightGain = std::sin(angle);
