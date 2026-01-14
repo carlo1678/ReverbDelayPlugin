@@ -1010,8 +1010,8 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(0.276f); // 290 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.173f); // 4000 Hz
+        parameters.getParameter("low_cut")->setValueNotifyingHost(290.0f); // 290 Hz (high pass - cuts low end)
+        parameters.getParameter("high_cut")->setValueNotifyingHost(4000.0f); // 4000 Hz (low pass - cuts high end)
         parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         break;
