@@ -8,6 +8,7 @@
       <FILE id="AvxbQD" name="Dry Signal.wav" compile="0" resource="1" file="test_audio/Dry Signal.wav"/>
       <FILE id="IgA9Tn" name="Mechanical Noise.wav" compile="0" resource="1"
             file="test_audio/Mechanical Noise.wav"/>
+      <FILE id="oofP8A" name="Radio Noise.wav" compile="0" resource="1" file="test_audio/Radio Noise.wav"/>
       <FILE id="KS5Twb" name="Reversed Signal (100% wet).wav" compile="0"
             resource="1" file="test_audio/Reversed Signal (100% wet).wav"/>
       <FILE id="k1THEM" name="telephone noise.wav" compile="0" resource="1"
