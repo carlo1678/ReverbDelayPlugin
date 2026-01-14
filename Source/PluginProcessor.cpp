@@ -51,6 +51,13 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     loadUnderwaterSound();
     loadMechanicalNoise();
     loadRadioNoise();
+
+    // Debug: Report loaded sample status
+    DBG("=== Audio Sample Loading Status ===");
+    DBG("Telephone Noise: " + juce::String(telephoneNoiseSample.getNumSamples()) + " samples");
+    DBG("Underwater Sound: " + juce::String(underwaterSoundSample.getNumSamples()) + " samples");
+    DBG("Mechanical Noise: " + juce::String(mechanicalNoiseSample.getNumSamples()) + " samples");
+    DBG("Radio Noise: " + juce::String(radioNoiseSample.getNumSamples()) + " samples");
 }
 
 
@@ -987,7 +994,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("high_cut")->setValueNotifyingHost(4700.0f); // 4700 Hz
         parameters.getParameter("wow")->setValueNotifyingHost(0.16f); // 16% (tape warble)
         parameters.getParameter("flutter")->setValueNotifyingHost(0.05f); // 5%
-        parameters.getParameter("mechanical_noise")->setValueNotifyingHost(0.0f); // 0% (off by default)
+        parameters.getParameter("mechanical_noise")->setValueNotifyingHost(0.30f); // 30% mechanical noise
         break;
 
     case 3: // Radio - Vintage radio broadcast sound
