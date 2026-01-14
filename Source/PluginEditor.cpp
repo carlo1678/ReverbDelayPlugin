@@ -561,14 +561,16 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
         {
             int telephoneKnobWidth = presetEfxContentArea.getWidth() / 3;
 
-            // Noise knob (left third)
-            noiseSlider.setBounds(presetEfxContentArea.removeFromLeft(telephoneKnobWidth).reduced(10, 0));
+            // Noise knob (left third) - explicitly sized
+            auto noiseArea = presetEfxContentArea.removeFromLeft(telephoneKnobWidth);
+            noiseSlider.setBounds(noiseArea.withSizeKeepingCentre(115, 115));
 
-            // Phaser Mix knob (center third)
-            phaserMixSlider.setBounds(presetEfxContentArea.removeFromLeft(telephoneKnobWidth).reduced(10, 0));
+            // Phaser Mix knob (center third) - explicitly sized
+            auto phaserMixArea = presetEfxContentArea.removeFromLeft(telephoneKnobWidth);
+            phaserMixSlider.setBounds(phaserMixArea.withSizeKeepingCentre(115, 115));
 
-            // Phaser Speed knob (right third)
-            phaserSpeedSlider.setBounds(presetEfxContentArea.reduced(10, 0));
+            // Phaser Speed knob (right third) - explicitly sized
+            phaserSpeedSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(115, 115));
         }
 
         // Underwater controls (1 knob centered)
@@ -583,14 +585,16 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
         {
             int tapeKnobWidth = presetEfxContentArea.getWidth() / 3;
 
-            // Wow knob (left third)
-            wowSlider.setBounds(presetEfxContentArea.removeFromLeft(tapeKnobWidth).reduced(10, 0));
+            // Wow knob (left third) - explicitly sized
+            auto wowArea = presetEfxContentArea.removeFromLeft(tapeKnobWidth);
+            wowSlider.setBounds(wowArea.withSizeKeepingCentre(115, 115));
 
-            // Flutter knob (center third)
-            flutterSlider.setBounds(presetEfxContentArea.removeFromLeft(tapeKnobWidth).reduced(10, 0));
+            // Flutter knob (center third) - explicitly sized
+            auto flutterArea = presetEfxContentArea.removeFromLeft(tapeKnobWidth);
+            flutterSlider.setBounds(flutterArea.withSizeKeepingCentre(115, 115));
 
-            // Mechanical Noise knob (right third)
-            mechanicalNoiseSlider.setBounds(presetEfxContentArea.reduced(10, 0));
+            // Mechanical Noise knob (right third) - explicitly sized
+            mechanicalNoiseSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(115, 115));
         }
 
         // Radio controls (1 knob centered)
