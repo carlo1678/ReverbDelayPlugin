@@ -46,6 +46,11 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     mechanicalNoiseParam = parameters.getRawParameterValue("mechanical_noise");
     radioNoiseParam = parameters.getRawParameterValue("radio_noise");
 
+    // Debug: Plugin constructor started
+    DBG("========================================");
+    DBG("REVERB DELAY PLUGIN CONSTRUCTOR STARTED");
+    DBG("========================================");
+
     // Load audio samples
     loadTelephoneNoise();
     loadUnderwaterSound();
@@ -58,6 +63,22 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     DBG("Underwater Sound: " + juce::String(underwaterSoundSample.getNumSamples()) + " samples");
     DBG("Mechanical Noise: " + juce::String(mechanicalNoiseSample.getNumSamples()) + " samples");
     DBG("Radio Noise: " + juce::String(radioNoiseSample.getNumSamples()) + " samples");
+
+    // Also write to log file as fallback
+    juce::File logFile = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
+        .getChildFile("ReverbDelayPlugin_Debug.txt");
+    logFile.appendText("========================================\n");
+    logFile.appendText("REVERB DELAY PLUGIN CONSTRUCTOR - " + juce::Time::getCurrentTime().toString(true, true) + "\n");
+    logFile.appendText("========================================\n");
+    logFile.appendText("Telephone Noise: " + juce::String(telephoneNoiseSample.getNumSamples()) + " samples\n");
+    logFile.appendText("Underwater Sound: " + juce::String(underwaterSoundSample.getNumSamples()) + " samples\n");
+    logFile.appendText("Mechanical Noise: " + juce::String(mechanicalNoiseSample.getNumSamples()) + " samples\n");
+    logFile.appendText("Radio Noise: " + juce::String(radioNoiseSample.getNumSamples()) + " samples\n");
+    logFile.appendText("\n");
+
+    DBG("========================================");
+    DBG("Log file written to: " + logFile.getFullPathName());
+    DBG("========================================");
 }
 
 
@@ -463,6 +484,13 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Layer underwater sound effect (underwater preset only)
                 if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
                 {
+                    // Debug: Log first time underwater effect is triggered
+                    if (!underwaterDebugLogged)
+                    {
+                        DBG(">>> UNDERWATER EFFECT ACTIVE: Mix=" + juce::String(underwaterMix) + ", Samples=" + juce::String(underwaterSoundSample.getNumSamples()));
+                        underwaterDebugLogged = true;
+                    }
+
                     // Calculate signal level from input signal (average of left and right)
                     float inputLevel = (std::abs(leftInput) + std::abs(rightInput)) * 0.5f;
 
@@ -493,6 +521,13 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Layer mechanical noise (tape preset only)
                 if (mechanicalNoise > 0.0f && mechanicalNoiseSample.getNumSamples() > 0)
                 {
+                    // Debug: Log first time mechanical noise is triggered
+                    if (!mechanicalDebugLogged)
+                    {
+                        DBG(">>> MECHANICAL NOISE ACTIVE: Amount=" + juce::String(mechanicalNoise) + "%, Samples=" + juce::String(mechanicalNoiseSample.getNumSamples()));
+                        mechanicalDebugLogged = true;
+                    }
+
                     float mechanicalAmount = mechanicalNoise / 100.0f; // 0-1 range
 
                     // Calculate signal level from delayed signal (average of left and right)
@@ -661,6 +696,13 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Layer underwater sound effect (underwater preset only)
                 if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
                 {
+                    // Debug: Log first time underwater effect is triggered
+                    if (!underwaterDebugLogged)
+                    {
+                        DBG(">>> UNDERWATER EFFECT ACTIVE: Mix=" + juce::String(underwaterMix) + ", Samples=" + juce::String(underwaterSoundSample.getNumSamples()));
+                        underwaterDebugLogged = true;
+                    }
+
                     // Calculate signal level from input signal (average of left and right)
                     float inputLevel = (std::abs(leftInput) + std::abs(rightInput)) * 0.5f;
 
@@ -691,6 +733,13 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Layer mechanical noise (tape preset only)
                 if (mechanicalNoise > 0.0f && mechanicalNoiseSample.getNumSamples() > 0)
                 {
+                    // Debug: Log first time mechanical noise is triggered
+                    if (!mechanicalDebugLogged)
+                    {
+                        DBG(">>> MECHANICAL NOISE ACTIVE: Amount=" + juce::String(mechanicalNoise) + "%, Samples=" + juce::String(mechanicalNoiseSample.getNumSamples()));
+                        mechanicalDebugLogged = true;
+                    }
+
                     float mechanicalAmount = mechanicalNoise / 100.0f; // 0-1 range
 
                     // Calculate signal level from delayed signal (average of left and right)

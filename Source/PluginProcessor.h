@@ -146,6 +146,10 @@ private:
     const float envelopeAttack = 0.99f;  // Fast attack
     float envelopeRelease = 0.9995f;     // Slow release (will be adjusted by feedback)
 
+    // Debug flags for one-time logging
+    bool underwaterDebugLogged = false;
+    bool mechanicalDebugLogged = false;
+
     // Helper methods to load audio samples
     void loadTelephoneNoise();
     void loadUnderwaterSound();
