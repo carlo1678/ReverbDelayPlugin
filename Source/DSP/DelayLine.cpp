@@ -18,7 +18,15 @@ void DelayLine::prepare(double sr, int maxDelayTimeMs)
     // Resize and clear buffers
     buffer.resize(bufferSize, 0.0f);
     writePosition = 0;
-    reverseReadPosition = 0.0f;
+
+    // Prepare reverse delay buffers
+    reverseCaptureBuffer.resize(bufferSize, 0.0f);
+    reversePlaybackBuffer.resize(bufferSize, 0.0f);
+    reverseCapturePos = 0;
+    reversePlaybackPos = 0;
+    reverseChunkSize = bufferSize / 2;  // Default chunk size
+    reverseIsCapturing = true;
+    reverseBufferReady = false;
 
     // Prepare pitch shifter
     pitchShifter.prepare(sr, bufferSize);
@@ -29,7 +37,14 @@ void DelayLine::reset()
     // Clear all samples in buffers
     std::fill(buffer.begin(), buffer.end(), 0.0f);
     writePosition = 0;
-    reverseReadPosition = 0.0f;
+
+    // Reset reverse delay state
+    std::fill(reverseCaptureBuffer.begin(), reverseCaptureBuffer.end(), 0.0f);
+    std::fill(reversePlaybackBuffer.begin(), reversePlaybackBuffer.end(), 0.0f);
+    reverseCapturePos = 0;
+    reversePlaybackPos = 0;
+    reverseIsCapturing = true;
+    reverseBufferReady = false;
 
     // Reset pitch shifter
     pitchShifter.reset();
@@ -78,41 +93,81 @@ float DelayLine::processSample(float input, float delayTimeMs, float feedback, f
 
     if (reverse)
     {
-        // CONTINUOUS REVERSE DELAY:
-        // Reads from the delay buffer moving backwards in time
-        // This creates a continuous reverse effect with no gaps or latency
+        // CHUNK-BASED REVERSE DELAY:
+        // Captures audio in chunks, reverses each chunk, then plays it back
+        // This creates the classic "reverse delay" effect with periodic reversed snippets
 
-        // Initialize reverse read position if needed (first time or after switching modes)
-        if (reverseReadPosition <= 0.0f)
+        // Update chunk size based on current delay time
+        reverseChunkSize = delaySamplesInt;
+        if (reverseChunkSize <= 0) reverseChunkSize = 1;
+        if (reverseChunkSize >= bufferSize) reverseChunkSize = bufferSize - 1;
+
+        if (reverseIsCapturing)
         {
-            // Start reading from delay time ago (same as normal delay)
-            reverseReadPosition = static_cast<float>(writePosition) - delaySamples;
-            if (reverseReadPosition < 0.0f)
-                reverseReadPosition += bufferSize;
+            // CAPTURING MODE: Record incoming audio into capture buffer
+            reverseCaptureBuffer[reverseCapturePos] = input;
+            reverseCapturePos++;
+
+            // When capture buffer is full, reverse it and switch to playback mode
+            if (reverseCapturePos >= reverseChunkSize)
+            {
+                // Reverse the captured audio into playback buffer
+                for (int i = 0; i < reverseChunkSize; ++i)
+                {
+                    reversePlaybackBuffer[i] = reverseCaptureBuffer[reverseChunkSize - 1 - i];
+                }
+
+                // Switch to playback mode
+                reverseIsCapturing = false;
+                reversePlaybackPos = 0;
+                reverseCapturePos = 0;
+                reverseBufferReady = true;
+            }
+
+            // Output reversed audio if available, otherwise silence
+            if (reverseBufferReady)
+            {
+                delayedSample = reversePlaybackBuffer[reversePlaybackPos];
+                reversePlaybackPos++;
+
+                // If we've played the entire reversed buffer, restart capturing
+                if (reversePlaybackPos >= reverseChunkSize)
+                {
+                    reverseIsCapturing = true;
+                    reversePlaybackPos = 0;
+                    reverseCapturePos = 0;
+                }
+            }
+            else
+            {
+                delayedSample = 0.0f;  // Silence during initial capture
+            }
         }
+        else
+        {
+            // PLAYBACK MODE: Play reversed audio while simultaneously capturing new audio
+            // Play reversed chunk
+            delayedSample = reversePlaybackBuffer[reversePlaybackPos];
+            reversePlaybackPos++;
 
-        // Read from buffer at reverse read position with linear interpolation
-        int readPosInt = static_cast<int>(reverseReadPosition);
-        float readPosFrac = reverseReadPosition - readPosInt;
+            // Simultaneously capture new audio
+            reverseCaptureBuffer[reverseCapturePos] = input;
+            reverseCapturePos++;
 
-        // Get two samples for interpolation
-        int readPos1 = readPosInt % bufferSize;
-        int readPos2 = (readPosInt + 1) % bufferSize;
-        if (readPos1 < 0) readPos1 += bufferSize;
-        if (readPos2 < 0) readPos2 += bufferSize;
+            // When playback finishes AND we've captured a full chunk, reverse and continue
+            if (reversePlaybackPos >= reverseChunkSize && reverseCapturePos >= reverseChunkSize)
+            {
+                // Reverse the newly captured audio
+                for (int i = 0; i < reverseChunkSize; ++i)
+                {
+                    reversePlaybackBuffer[i] = reverseCaptureBuffer[reverseChunkSize - 1 - i];
+                }
 
-        // Linear interpolation for smooth playback
-        float sample1 = buffer[readPos1];
-        float sample2 = buffer[readPos2];
-        delayedSample = sample1 + readPosFrac * (sample2 - sample1);
-
-        // Move read position BACKWARDS through the buffer (reverse playback)
-        // We move forward in time but read backwards through captured audio
-        reverseReadPosition -= 1.0f;
-
-        // Wrap around when we reach the beginning
-        if (reverseReadPosition < 0.0f)
-            reverseReadPosition += bufferSize;
+                // Restart both playback and capture
+                reversePlaybackPos = 0;
+                reverseCapturePos = 0;
+            }
+        }
     }
     else
     {
@@ -125,7 +180,10 @@ float DelayLine::processSample(float input, float delayTimeMs, float feedback, f
         delayedSample = buffer[readPos];
 
         // Reset reverse state when not in reverse mode
-        reverseReadPosition = 0.0f;
+        reverseIsCapturing = true;
+        reverseCapturePos = 0;
+        reversePlaybackPos = 0;
+        reverseBufferReady = false;
     }
 
     // Apply pitch shifting to delayed sample

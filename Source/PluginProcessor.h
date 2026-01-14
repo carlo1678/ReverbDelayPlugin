@@ -94,6 +94,7 @@ private:
     std::atomic<float>* underwaterMixParam = nullptr;
     std::atomic<float>* mechanicalNoiseParam = nullptr;
     std::atomic<float>* radioNoiseParam = nullptr;
+    std::atomic<float>* delayPitchParam = nullptr;
 
     // DSP Components
     DelayLine delayLineLeft;
@@ -145,6 +146,10 @@ private:
     float radioEnvelope = 0.0f;
     const float envelopeAttack = 0.99f;  // Fast attack
     float envelopeRelease = 0.9995f;     // Slow release (will be adjusted by feedback)
+
+    // Debug flags for one-time logging
+    bool underwaterDebugLogged = false;
+    bool mechanicalDebugLogged = false;
 
     // Helper methods to load audio samples
     void loadTelephoneNoise();

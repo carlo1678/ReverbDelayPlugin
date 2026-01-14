@@ -45,12 +45,41 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     underwaterMixParam = parameters.getRawParameterValue("underwater_mix");
     mechanicalNoiseParam = parameters.getRawParameterValue("mechanical_noise");
     radioNoiseParam = parameters.getRawParameterValue("radio_noise");
+    delayPitchParam = parameters.getRawParameterValue("delay_pitch");
+
+    // Debug: Plugin constructor started
+    DBG("========================================");
+    DBG("REVERB DELAY PLUGIN CONSTRUCTOR STARTED");
+    DBG("========================================");
 
     // Load audio samples
     loadTelephoneNoise();
     loadUnderwaterSound();
     loadMechanicalNoise();
     loadRadioNoise();
+
+    // Debug: Report loaded sample status
+    DBG("=== Audio Sample Loading Status ===");
+    DBG("Telephone Noise: " + juce::String(telephoneNoiseSample.getNumSamples()) + " samples");
+    DBG("Underwater Sound: " + juce::String(underwaterSoundSample.getNumSamples()) + " samples");
+    DBG("Mechanical Noise: " + juce::String(mechanicalNoiseSample.getNumSamples()) + " samples");
+    DBG("Radio Noise: " + juce::String(radioNoiseSample.getNumSamples()) + " samples");
+
+    // Also write to log file as fallback
+    juce::File logFile = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
+        .getChildFile("ReverbDelayPlugin_Debug.txt");
+    logFile.appendText("========================================\n");
+    logFile.appendText("REVERB DELAY PLUGIN CONSTRUCTOR - " + juce::Time::getCurrentTime().toString(true, true) + "\n");
+    logFile.appendText("========================================\n");
+    logFile.appendText("Telephone Noise: " + juce::String(telephoneNoiseSample.getNumSamples()) + " samples\n");
+    logFile.appendText("Underwater Sound: " + juce::String(underwaterSoundSample.getNumSamples()) + " samples\n");
+    logFile.appendText("Mechanical Noise: " + juce::String(mechanicalNoiseSample.getNumSamples()) + " samples\n");
+    logFile.appendText("Radio Noise: " + juce::String(radioNoiseSample.getNumSamples()) + " samples\n");
+    logFile.appendText("\n");
+
+    DBG("========================================");
+    DBG("Log file written to: " + logFile.getFullPathName());
+    DBG("========================================");
 }
 
 
@@ -223,6 +252,24 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     float mechanicalNoise = mechanicalNoiseParam->load(); // 0-100 range
     float radioNoise = radioNoiseParam->load(); // 0-100 range
 
+    // Get delay pitch parameter and convert index to semitones
+    // Index 0-8 maps to: -24, -12, -7, -5, 0, +5, +7, +12, +24 semitones
+    int pitchIndex = static_cast<int>(delayPitchParam->load());
+    float pitchShift = 0.0f;
+    switch (pitchIndex)
+    {
+        case 0: pitchShift = -24.0f; break;  // -2 octaves
+        case 1: pitchShift = -12.0f; break;  // -1 octave
+        case 2: pitchShift = -7.0f; break;   // -Perfect 5th
+        case 3: pitchShift = -5.0f; break;   // -Perfect 4th
+        case 4: pitchShift = 0.0f; break;    // No pitch shift (unison)
+        case 5: pitchShift = 5.0f; break;    // +Perfect 4th
+        case 6: pitchShift = 7.0f; break;    // +Perfect 5th
+        case 7: pitchShift = 12.0f; break;   // +1 octave
+        case 8: pitchShift = 24.0f; break;   // +2 octaves
+        default: pitchShift = 0.0f; break;
+    }
+
     // Calculate dynamic envelope release based on feedback
     // Higher feedback = longer release time for overlay sounds
     // Map feedback (0-0.99) to release coefficient (0.995-0.9998)
@@ -343,18 +390,20 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
             }
         }
 
-        // Get pendulum speed setting (0=1 Bar, 1=1/2 Bar, 2=1/4 Bar, 3=1/8 Bar, 4=1/16 Bar)
+        // Get pendulum speed setting (0=4 Bar, 1=2 Bar, 2=1 Bar, 3=1/2, 4=1/4, 5=1/8, 6=1/16)
         int speedIndex = static_cast<int>(pendulumSpeedParam->load());
 
         // Calculate beats per cycle based on speed selection
-        float beatsPerCycle = 4.0f; // Default: 1 bar = 4 beats
+        float beatsPerCycle = 1.0f; // Default: 1/4 bar = 1 beat
         switch (speedIndex)
         {
-            case 0: beatsPerCycle = 4.0f; break;   // 1 Bar = 4 beats
-            case 1: beatsPerCycle = 2.0f; break;   // 1/2 Bar = 2 beats
-            case 2: beatsPerCycle = 1.0f; break;   // 1/4 Bar = 1 beat
-            case 3: beatsPerCycle = 0.5f; break;   // 1/8 Bar = 0.5 beats
-            case 4: beatsPerCycle = 0.25f; break;  // 1/16 Bar = 0.25 beats
+            case 0: beatsPerCycle = 16.0f; break;  // 4 Bar = 16 beats
+            case 1: beatsPerCycle = 8.0f; break;   // 2 Bar = 8 beats
+            case 2: beatsPerCycle = 4.0f; break;   // 1 Bar = 4 beats
+            case 3: beatsPerCycle = 2.0f; break;   // 1/2 Bar = 2 beats
+            case 4: beatsPerCycle = 1.0f; break;   // 1/4 Bar = 1 beat
+            case 5: beatsPerCycle = 0.5f; break;   // 1/8 Bar = 0.5 beats
+            case 6: beatsPerCycle = 0.25f; break;  // 1/16 Bar = 0.25 beats
             default: beatsPerCycle = 1.0f; break;
         }
 
@@ -378,8 +427,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 float rightInput = rightChannel[sample];
 
                 // Process delays (left delay goes to right, right delay goes to left)
-                float leftDelayed = delayLineLeft.processSample(rightInput, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
-                float rightDelayed = delayLineRight.processSample(leftInput, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
+                float leftDelayed = delayLineLeft.processSample(rightInput, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
+                float rightDelayed = delayLineRight.processSample(leftInput, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
 
                 // Apply filters to delayed signal
                 leftDelayed = lowCutFilterLeft.get<0>().processSample(leftDelayed);
@@ -454,6 +503,13 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Layer underwater sound effect (underwater preset only)
                 if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
                 {
+                    // Debug: Log first time underwater effect is triggered
+                    if (!underwaterDebugLogged)
+                    {
+                        DBG(">>> UNDERWATER EFFECT ACTIVE: Mix=" + juce::String(underwaterMix) + ", Samples=" + juce::String(underwaterSoundSample.getNumSamples()));
+                        underwaterDebugLogged = true;
+                    }
+
                     // Calculate signal level from input signal (average of left and right)
                     float inputLevel = (std::abs(leftInput) + std::abs(rightInput)) * 0.5f;
 
@@ -484,6 +540,13 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Layer mechanical noise (tape preset only)
                 if (mechanicalNoise > 0.0f && mechanicalNoiseSample.getNumSamples() > 0)
                 {
+                    // Debug: Log first time mechanical noise is triggered
+                    if (!mechanicalDebugLogged)
+                    {
+                        DBG(">>> MECHANICAL NOISE ACTIVE: Amount=" + juce::String(mechanicalNoise) + "%, Samples=" + juce::String(mechanicalNoiseSample.getNumSamples()));
+                        mechanicalDebugLogged = true;
+                    }
+
                     float mechanicalAmount = mechanicalNoise / 100.0f; // 0-1 range
 
                     // Calculate signal level from delayed signal (average of left and right)
@@ -548,11 +611,11 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Apply pendulum panning to final mixed output
                 if (pendulumPanEnabled)
                 {
-                    // Calculate pan position using sine wave (-1 to +1)
-                    float panPosition = std::sin(pendulumPhase);
+                    // Calculate pan position using sine wave, limited to 75% width (-0.75 to +0.75)
+                    float panPosition = std::sin(pendulumPhase) * 0.75f;
 
                     // Convert pan position to stereo gains (constant power panning)
-                    // panPosition: -1 = full left, 0 = center, +1 = full right
+                    // panPosition: -0.75 = 75% left, 0 = center, +0.75 = 75% right
                     float angle = (panPosition + 1.0f) * 0.25f * juce::MathConstants<float>::pi; // Map to 0 to pi/2
                     float leftGain = std::cos(angle);
                     float rightGain = std::sin(angle);
@@ -576,8 +639,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 float leftInput = leftChannel[sample];
                 float rightInput = rightChannel[sample];
 
-                float leftDelayed = delayLineLeft.processSample(leftInput, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
-                float rightDelayed = delayLineRight.processSample(rightInput, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
+                float leftDelayed = delayLineLeft.processSample(leftInput, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
+                float rightDelayed = delayLineRight.processSample(rightInput, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
 
                 // Apply filters to delayed signal
                 leftDelayed = lowCutFilterLeft.get<0>().processSample(leftDelayed);
@@ -652,6 +715,13 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Layer underwater sound effect (underwater preset only)
                 if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
                 {
+                    // Debug: Log first time underwater effect is triggered
+                    if (!underwaterDebugLogged)
+                    {
+                        DBG(">>> UNDERWATER EFFECT ACTIVE: Mix=" + juce::String(underwaterMix) + ", Samples=" + juce::String(underwaterSoundSample.getNumSamples()));
+                        underwaterDebugLogged = true;
+                    }
+
                     // Calculate signal level from input signal (average of left and right)
                     float inputLevel = (std::abs(leftInput) + std::abs(rightInput)) * 0.5f;
 
@@ -682,6 +752,13 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Layer mechanical noise (tape preset only)
                 if (mechanicalNoise > 0.0f && mechanicalNoiseSample.getNumSamples() > 0)
                 {
+                    // Debug: Log first time mechanical noise is triggered
+                    if (!mechanicalDebugLogged)
+                    {
+                        DBG(">>> MECHANICAL NOISE ACTIVE: Amount=" + juce::String(mechanicalNoise) + "%, Samples=" + juce::String(mechanicalNoiseSample.getNumSamples()));
+                        mechanicalDebugLogged = true;
+                    }
+
                     float mechanicalAmount = mechanicalNoise / 100.0f; // 0-1 range
 
                     // Calculate signal level from delayed signal (average of left and right)
@@ -746,11 +823,11 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 // Apply pendulum panning to final mixed output
                 if (pendulumPanEnabled)
                 {
-                    // Calculate pan position using sine wave (-1 to +1)
-                    float panPosition = std::sin(pendulumPhase);
+                    // Calculate pan position using sine wave, limited to 75% width (-0.75 to +0.75)
+                    float panPosition = std::sin(pendulumPhase) * 0.75f;
 
                     // Convert pan position to stereo gains (constant power panning)
-                    // panPosition: -1 = full left, 0 = center, +1 = full right
+                    // panPosition: -0.75 = 75% left, 0 = center, +0.75 = 75% right
                     float angle = (panPosition + 1.0f) * 0.25f * juce::MathConstants<float>::pi; // Map to 0 to pi/2
                     float leftGain = std::cos(angle);
                     float rightGain = std::sin(angle);
@@ -775,7 +852,7 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
             float input = leftChannel[sample];
-            float delayed = delayLineLeft.processSample(input, delayTime, feedback, 0.0f, reverseEnabled, wow, flutter);
+            float delayed = delayLineLeft.processSample(input, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
 
             // Apply filters to delayed signal
             delayed = lowCutFilterLeft.get<0>().processSample(delayed);
@@ -877,10 +954,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         "pendulum_pan", "Pendulum Pan", false));
 
-    // Pendulum Speed (tempo-synced divisions)
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+    // Pendulum Speed (tempo-synced divisions: 0=4 Bar, 1=2 Bar, 2=1 Bar, 3=1/2, 4=1/4, 5=1/8, 6=1/16)
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "pendulum_speed", "Pendulum Speed",
-        juce::StringArray{ "1 Bar", "1/2 Bar", "1/4 Bar", "1/8 Bar", "1/16 Bar" }, 2)); // Default to 1/4 Bar
+        juce::NormalisableRange<float>(0.0f, 6.0f, 1.0f),
+        4.0f)); // Default to 1/4 Bar (index 4)
 
     // Noise/Static (telephone preset only) - 0 to 100%
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -907,6 +985,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
     // Radio Noise (radio preset only) - 0 to 100%
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "radio_noise", "Radio Noise", 0.0f, 100.0f, 0.0f));
+
+    // Delay Pitch (available on all presets)
+    // Musical intervals: -2 octaves, -1 octave, -P5, -P4, 0, +P4, +P5, +1 octave, +2 octaves
+    // Semitones: -24, -12, -7, -5, 0, +5, +7, +12, +24
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        "delay_pitch", "Delay Pitch",
+        juce::NormalisableRange<float>(0.0f, 8.0f, 1.0f),
+        4.0f)); // Default to 0 semitones (index 4)
 
     return { params.begin(), params.end() };
 }
@@ -951,8 +1037,8 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(0.276f); // 290 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.173f); // 4000 Hz
+        parameters.getParameter("low_cut")->setValueNotifyingHost(290.0f); // 290 Hz (high pass - cuts low end)
+        parameters.getParameter("high_cut")->setValueNotifyingHost(4000.0f); // 4000 Hz (low pass - cuts high end)
         parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         break;
@@ -984,7 +1070,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("high_cut")->setValueNotifyingHost(4700.0f); // 4700 Hz
         parameters.getParameter("wow")->setValueNotifyingHost(0.16f); // 16% (tape warble)
         parameters.getParameter("flutter")->setValueNotifyingHost(0.05f); // 5%
-        parameters.getParameter("mechanical_noise")->setValueNotifyingHost(0.0f); // 0% (off by default)
+        parameters.getParameter("mechanical_noise")->setValueNotifyingHost(0.30f); // 30% mechanical noise
         break;
 
     case 3: // Radio - Vintage radio broadcast sound
