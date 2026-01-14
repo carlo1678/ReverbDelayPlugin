@@ -1,4 +1,6 @@
 #include "DelayLine.h"
+#include <algorithm>  // For std::fill
+#include <cmath>      // For std::sin
 
 DelayLine::DelayLine()
 {
