@@ -446,7 +446,7 @@ void ReverbDelayPluginAudioProcessorEditor::paint(juce::Graphics& g)
         presetEfxBoxBounds.reduce(30, 30);
         presetEfxBoxBounds.removeFromTop(60 + 10 + 120 + 20 + 180 + 10 + 55 + 10); // Skip all previous sections
 
-        auto presetEfxBoxSection = presetEfxBoxBounds.removeFromTop(190); // Increased to 190 for more knob space
+        auto presetEfxBoxSection = presetEfxBoxBounds.removeFromTop(200); // Increased to 200 for even more space
         presetEfxBoxSection.reduce(10, 10); // Add some padding
 
         // Draw rounded rectangle border for Preset Specific EFX box
@@ -546,7 +546,7 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     // Preset Specific EFX box (only visible when preset-specific controls are active)
     if (presetEfxLabel.isVisible())
     {
-        auto presetEfxRow = bounds.removeFromTop(190); // Increased to 190 for more knob space
+        auto presetEfxRow = bounds.removeFromTop(200); // Increased to 200 for even more space
 
         // Preset Specific EFX title label at top of box (with spacing from border)
         presetEfxRow.removeFromTop(10); // Spacing from title to border
@@ -554,7 +554,7 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
 
         // Content area inside the box
         presetEfxRow.removeFromTop(10); // Spacing between title and knobs
-        auto presetEfxContentArea = presetEfxRow.removeFromTop(125); // Increased to 125 for larger knobs
+        auto presetEfxContentArea = presetEfxRow.removeFromTop(135); // Increased to 135 for much larger knobs
 
         // Telephone controls (3 knobs side by side)
         if (noiseSlider.isVisible())
@@ -562,20 +562,20 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
             int telephoneKnobWidth = presetEfxContentArea.getWidth() / 3;
 
             // Noise knob (left third)
-            noiseSlider.setBounds(presetEfxContentArea.removeFromLeft(telephoneKnobWidth).reduced(12, 0));
+            noiseSlider.setBounds(presetEfxContentArea.removeFromLeft(telephoneKnobWidth).reduced(10, 0));
 
             // Phaser Mix knob (center third)
-            phaserMixSlider.setBounds(presetEfxContentArea.removeFromLeft(telephoneKnobWidth).reduced(12, 0));
+            phaserMixSlider.setBounds(presetEfxContentArea.removeFromLeft(telephoneKnobWidth).reduced(10, 0));
 
             // Phaser Speed knob (right third)
-            phaserSpeedSlider.setBounds(presetEfxContentArea.reduced(12, 0));
+            phaserSpeedSlider.setBounds(presetEfxContentArea.reduced(10, 0));
         }
 
         // Underwater controls (1 knob centered)
         if (underwaterMixSlider.isVisible())
         {
             // Bubbles knob (centered)
-            underwaterMixSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(110, 110));
+            underwaterMixSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(120, 120));
         }
 
         // Tape controls (3 knobs side by side: wow, flutter, mechanical noise)
@@ -584,20 +584,20 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
             int tapeKnobWidth = presetEfxContentArea.getWidth() / 3;
 
             // Wow knob (left third)
-            wowSlider.setBounds(presetEfxContentArea.removeFromLeft(tapeKnobWidth).reduced(12, 0));
+            wowSlider.setBounds(presetEfxContentArea.removeFromLeft(tapeKnobWidth).reduced(10, 0));
 
             // Flutter knob (center third)
-            flutterSlider.setBounds(presetEfxContentArea.removeFromLeft(tapeKnobWidth).reduced(12, 0));
+            flutterSlider.setBounds(presetEfxContentArea.removeFromLeft(tapeKnobWidth).reduced(10, 0));
 
             // Mechanical Noise knob (right third)
-            mechanicalNoiseSlider.setBounds(presetEfxContentArea.reduced(12, 0));
+            mechanicalNoiseSlider.setBounds(presetEfxContentArea.reduced(10, 0));
         }
 
         // Radio controls (1 knob centered)
         if (radioNoiseSlider.isVisible())
         {
             // Radio Noise knob (centered)
-            radioNoiseSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(110, 110));
+            radioNoiseSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(120, 120));
         }
 
         bounds.removeFromTop(10);
