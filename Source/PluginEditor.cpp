@@ -446,7 +446,7 @@ void ReverbDelayPluginAudioProcessorEditor::paint(juce::Graphics& g)
         presetEfxBoxBounds.reduce(30, 30);
         presetEfxBoxBounds.removeFromTop(60 + 10 + 120 + 20 + 180 + 10 + 55 + 10); // Skip all previous sections
 
-        auto presetEfxBoxSection = presetEfxBoxBounds.removeFromTop(170); // Reduced to 170 for proper sizing
+        auto presetEfxBoxSection = presetEfxBoxBounds.removeFromTop(135); // Compact sizing
         presetEfxBoxSection.reduce(10, 10); // Add some padding
 
         // Draw rounded rectangle border for Preset Specific EFX box
@@ -546,38 +546,38 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
     // Preset Specific EFX box (only visible when preset-specific controls are active)
     if (presetEfxLabel.isVisible())
     {
-        auto presetEfxRow = bounds.removeFromTop(170); // Reduced to 170 for proper sizing
+        auto presetEfxRow = bounds.removeFromTop(135); // Compact sizing
 
         // Preset Specific EFX title label at top of box (with spacing from border)
-        presetEfxRow.removeFromTop(8); // Spacing from border to title
-        presetEfxLabel.setBounds(presetEfxRow.removeFromTop(25));
+        presetEfxRow.removeFromTop(5); // Spacing from border to title
+        presetEfxLabel.setBounds(presetEfxRow.removeFromTop(18));
 
         // Content area inside the box
-        presetEfxRow.removeFromTop(8); // Spacing between title and knobs
-        auto presetEfxContentArea = presetEfxRow.removeFromTop(110); // Knob area
+        presetEfxRow.removeFromTop(5); // Spacing between title and knobs
+        auto presetEfxContentArea = presetEfxRow.removeFromTop(80); // Knob area
 
         // Telephone controls (3 knobs side by side)
         if (noiseSlider.isVisible())
         {
             int telephoneKnobWidth = presetEfxContentArea.getWidth() / 3;
 
-            // Noise knob (left third) - 95x95 pixels
+            // Noise knob (left third) - compact sizing
             auto noiseArea = presetEfxContentArea.removeFromLeft(telephoneKnobWidth);
-            noiseSlider.setBounds(noiseArea.withSizeKeepingCentre(95, 95));
+            noiseSlider.setBounds(noiseArea.reduced(30, 3));
 
-            // Phaser Mix knob (center third) - 95x95 pixels
+            // Phaser Mix knob (center third)
             auto phaserMixArea = presetEfxContentArea.removeFromLeft(telephoneKnobWidth);
-            phaserMixSlider.setBounds(phaserMixArea.withSizeKeepingCentre(95, 95));
+            phaserMixSlider.setBounds(phaserMixArea.reduced(30, 3));
 
-            // Phaser Speed knob (right third) - 95x95 pixels
-            phaserSpeedSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(95, 95));
+            // Phaser Speed knob (right third)
+            phaserSpeedSlider.setBounds(presetEfxContentArea.reduced(30, 3));
         }
 
         // Underwater controls (1 knob centered)
         if (underwaterMixSlider.isVisible())
         {
-            // Bubbles knob (centered) - 100x100 pixels
-            underwaterMixSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(100, 100));
+            // Bubbles knob (centered)
+            underwaterMixSlider.setBounds(presetEfxContentArea.reduced(50, 3));
         }
 
         // Tape controls (3 knobs side by side: wow, flutter, mechanical noise)
@@ -585,26 +585,26 @@ void ReverbDelayPluginAudioProcessorEditor::resized()
         {
             int tapeKnobWidth = presetEfxContentArea.getWidth() / 3;
 
-            // Wow knob (left third) - 95x95 pixels
+            // Wow knob (left third)
             auto wowArea = presetEfxContentArea.removeFromLeft(tapeKnobWidth);
-            wowSlider.setBounds(wowArea.withSizeKeepingCentre(95, 95));
+            wowSlider.setBounds(wowArea.reduced(30, 3));
 
-            // Flutter knob (center third) - 95x95 pixels
+            // Flutter knob (center third)
             auto flutterArea = presetEfxContentArea.removeFromLeft(tapeKnobWidth);
-            flutterSlider.setBounds(flutterArea.withSizeKeepingCentre(95, 95));
+            flutterSlider.setBounds(flutterArea.reduced(30, 3));
 
-            // Mechanical Noise knob (right third) - 95x95 pixels
-            mechanicalNoiseSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(95, 95));
+            // Mechanical Noise knob (right third)
+            mechanicalNoiseSlider.setBounds(presetEfxContentArea.reduced(30, 3));
         }
 
         // Radio controls (1 knob centered)
         if (radioNoiseSlider.isVisible())
         {
-            // Radio Noise knob (centered) - 100x100 pixels
-            radioNoiseSlider.setBounds(presetEfxContentArea.withSizeKeepingCentre(100, 100));
+            // Radio Noise knob (centered)
+            radioNoiseSlider.setBounds(presetEfxContentArea.reduced(50, 3));
         }
 
-        bounds.removeFromTop(15); // Extra spacing after box before bottom controls
+        bounds.removeFromTop(20); // Extra spacing after box before bottom controls
     }
 
     // Bottom row: PING PONG - PENDULUM PAN (with speed knob) - REVERSE
