@@ -486,8 +486,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     int noiseChannel = telephoneNoiseSample.getNumChannels() > 0 ? 0 : 0;
                     float noiseSample = telephoneNoiseSample.getSample(noiseChannel, telephoneNoiseReadPos);
 
-                    // Apply noise amount scaling and envelope
-                    noiseSample *= noiseAmount * telephoneEnvelope;
+                    // Apply noise amount scaling and envelope with +6dB boost for audibility
+                    noiseSample *= noiseAmount * telephoneEnvelope * 2.0f;
 
                     leftDelayed += noiseSample;
                     rightDelayed += noiseSample;
@@ -698,8 +698,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     int noiseChannel = telephoneNoiseSample.getNumChannels() > 0 ? 0 : 0;
                     float noiseSample = telephoneNoiseSample.getSample(noiseChannel, telephoneNoiseReadPos);
 
-                    // Apply noise amount scaling and envelope
-                    noiseSample *= noiseAmount * telephoneEnvelope;
+                    // Apply noise amount scaling and envelope with +6dB boost for audibility
+                    noiseSample *= noiseAmount * telephoneEnvelope * 2.0f;
 
                     leftDelayed += noiseSample;
                     rightDelayed += noiseSample;
