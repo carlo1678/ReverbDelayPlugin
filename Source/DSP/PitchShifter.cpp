@@ -1,4 +1,5 @@
 #include "PitchShifter.h"
+#include <algorithm>
 
 PitchShifter::PitchShifter()
 {
@@ -11,68 +12,156 @@ PitchShifter::~PitchShifter()
 void PitchShifter::prepare(double sr, int maxBufferSize)
 {
     sampleRate = sr;
-    bufferSize = maxBufferSize;
+    bufferSize = std::max(maxBufferSize, grainSize * 4); // Ensure enough buffer for grains
 
-    // Allocate buffer for pitch shifting
-    buffer.resize(windowSize * 2, 0.0f);
+    // Allocate circular buffer for granular processing
+    buffer.resize(bufferSize, 0.0f);
     writePosition = 0;
-    phase = 0.0f;
+
+    // Pre-calculate Hann window for grain crossfading
+    calculateHannWindow();
+
+    // Initialize grain streams
+    for (int i = 0; i < 2; ++i)
+    {
+        grains[i].readPosition = grainSize * i / 2.0f; // Offset grains for overlap
+        grains[i].grainProgress = 0;
+        grains[i].grainPhase = 0.0f;
+    }
+
+    currentGrain = 0;
 }
 
 void PitchShifter::reset()
 {
     std::fill(buffer.begin(), buffer.end(), 0.0f);
     writePosition = 0;
-    phase = 0.0f;
+
+    // Reset grain streams
+    for (int i = 0; i < 2; ++i)
+    {
+        grains[i].readPosition = grainSize * i / 2.0f;
+        grains[i].grainProgress = 0;
+        grains[i].grainPhase = 0.0f;
+    }
+}
+
+void PitchShifter::calculateHannWindow()
+{
+    // Pre-calculate Hann window for smooth grain transitions
+    hannWindow.resize(grainSize);
+    for (int i = 0; i < grainSize; ++i)
+    {
+        // Hann window: 0.5 * (1 - cos(2π * i / N))
+        float phase = (float)i / (float)(grainSize - 1);
+        hannWindow[i] = 0.5f * (1.0f - std::cos(2.0f * juce::MathConstants<float>::pi * phase));
+    }
+}
+
+float PitchShifter::readBufferInterpolated(float position)
+{
+    // Cubic interpolation for high-quality sample reading
+    // This provides much better quality than linear interpolation
+
+    // Wrap position to buffer bounds
+    while (position < 0)
+        position += bufferSize;
+    while (position >= bufferSize)
+        position -= bufferSize;
+
+    int index = static_cast<int>(position);
+    float frac = position - index;
+
+    // Get 4 samples for cubic interpolation
+    int i0 = (index - 1 + bufferSize) % bufferSize;
+    int i1 = index;
+    int i2 = (index + 1) % bufferSize;
+    int i3 = (index + 2) % bufferSize;
+
+    float y0 = buffer[i0];
+    float y1 = buffer[i1];
+    float y2 = buffer[i2];
+    float y3 = buffer[i3];
+
+    // Cubic interpolation (Catmull-Rom spline)
+    float c0 = y1;
+    float c1 = 0.5f * (y2 - y0);
+    float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+    float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+
+    return ((c3 * frac + c2) * frac + c1) * frac + c0;
+}
+
+float PitchShifter::getWindowedSample(float readPos, float windowPhase)
+{
+    // Read sample with interpolation
+    float sample = readBufferInterpolated(readPos);
+
+    // Apply Hann window for smooth grain transitions
+    int windowIndex = static_cast<int>(windowPhase * (grainSize - 1));
+    windowIndex = juce::jlimit(0, grainSize - 1, windowIndex);
+
+    return sample * hannWindow[windowIndex];
 }
 
 float PitchShifter::processSample(float input, float pitchShiftSemitones)
 {
-    // Write input to buffer
+    // Write input to circular buffer
     buffer[writePosition] = input;
+    writePosition = (writePosition + 1) % bufferSize;
 
-    // Calculate pitch shift ratio (semitones to frequency ratio)
+    // Calculate pitch ratio from semitones
+    // Ratio > 1.0 = pitch up, Ratio < 1.0 = pitch down
     float pitchRatio = std::pow(2.0f, pitchShiftSemitones / 12.0f);
 
-    // Simple pitch shifting using variable delay
-    float readPosition = writePosition - (windowSize * 0.5f);
+    // If no pitch shift, bypass granular processing for efficiency
+    if (std::abs(pitchShiftSemitones) < 0.01f)
+    {
+        int readPos = (writePosition - grainSize + bufferSize) % bufferSize;
+        return buffer[readPos];
+    }
 
-    // Add pitch-based offset
-    readPosition -= (pitchRatio - 1.0f) * windowSize * 0.25f;
+    // Process two overlapping grain streams
+    float output = 0.0f;
+    int grainsActive = 0;
 
-    // Wrap read position
-    while (readPosition < 0)
-        readPosition += buffer.size();
-    while (readPosition >= buffer.size())
-        readPosition -= buffer.size();
+    for (int g = 0; g < 2; ++g)
+    {
+        GrainStream& grain = grains[g];
 
-    // Linear interpolation for smooth reading
-    int readIndex = static_cast<int>(readPosition);
-    float frac = readPosition - readIndex;
+        // Calculate read position in buffer
+        // Grains read backwards from write position
+        float bufferReadPos = writePosition - (grainSize * 2 - grain.readPosition);
+        while (bufferReadPos < 0)
+            bufferReadPos += bufferSize;
 
-    int nextIndex = (readIndex + 1) % buffer.size();
+        // Get windowed sample from this grain
+        float windowPhase = (float)grain.grainProgress / (float)grainSize;
+        float grainSample = getWindowedSample(bufferReadPos, windowPhase);
 
-    float sample1 = buffer[readIndex];
-    float sample2 = buffer[nextIndex];
+        output += grainSample;
+        grainsActive++;
 
-    float output = sample1 + frac * (sample2 - sample1);
+        // Advance grain playback at pitch-adjusted rate
+        grain.readPosition += pitchRatio;
+        grain.grainProgress++;
 
-    // Apply simple windowing to reduce artifacts
-    float window = 0.5f * (1.0f - std::cos(2.0f * juce::MathConstants<float>::pi * phase / windowSize));
-    output *= window;
+        // When grain finishes, restart it
+        if (grain.grainProgress >= grainSize)
+        {
+            grain.grainProgress = 0;
+            grain.readPosition = 0.0f;
+        }
+    }
 
-    // Update phase
-    phase += pitchRatio;
-    if (phase >= windowSize)
-        phase -= windowSize;
-
-    // Advance write position
-    writePosition = (writePosition + 1) % buffer.size();
+    // Normalize output by number of active grains to prevent volume increase
+    if (grainsActive > 0)
+        output /= grainsActive;
 
     return output;
 }
 
 void PitchShifter::setPitchShift(float semitones)
 {
-    currentPitchShift = juce::jlimit(-12.0f, 12.0f, semitones);
+    currentPitchShift = juce::jlimit(-24.0f, 24.0f, semitones);
 }
