@@ -486,8 +486,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     int noiseChannel = telephoneNoiseSample.getNumChannels() > 0 ? 0 : 0;
                     float noiseSample = telephoneNoiseSample.getSample(noiseChannel, telephoneNoiseReadPos);
 
-                    // Apply noise amount scaling and envelope
-                    noiseSample *= noiseAmount * telephoneEnvelope;
+                    // Apply noise amount scaling and envelope with +6dB boost for audibility
+                    noiseSample *= noiseAmount * telephoneEnvelope * 2.0f;
 
                     leftDelayed += noiseSample;
                     rightDelayed += noiseSample;
@@ -537,8 +537,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
                     float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
 
-                    // Apply envelope to underwater sound
-                    underwaterSample *= underwaterEnvelope;
+                    // Apply envelope to underwater sound with +6dB boost for audibility
+                    underwaterSample *= underwaterEnvelope * 2.0f;
 
                     // Layer underwater sound with the input (not just delayed signal)
                     // This creates the underwater ambience effect
@@ -698,8 +698,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     int noiseChannel = telephoneNoiseSample.getNumChannels() > 0 ? 0 : 0;
                     float noiseSample = telephoneNoiseSample.getSample(noiseChannel, telephoneNoiseReadPos);
 
-                    // Apply noise amount scaling and envelope
-                    noiseSample *= noiseAmount * telephoneEnvelope;
+                    // Apply noise amount scaling and envelope with +6dB boost for audibility
+                    noiseSample *= noiseAmount * telephoneEnvelope * 2.0f;
 
                     leftDelayed += noiseSample;
                     rightDelayed += noiseSample;
@@ -749,8 +749,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
                     float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
 
-                    // Apply envelope to underwater sound
-                    underwaterSample *= underwaterEnvelope;
+                    // Apply envelope to underwater sound with +6dB boost for audibility
+                    underwaterSample *= underwaterEnvelope * 2.0f;
 
                     // Layer underwater sound with the input (not just delayed signal)
                     // This creates the underwater ambience effect
