@@ -896,15 +896,37 @@ juce::AudioProcessorEditor* ReverbDelayPluginAudioProcessor::createEditor()
 //==============================================================================
 void ReverbDelayPluginAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // You should use this method to store your parameters in the memory block.
-    // You could do that either as raw data, or use the XML or ValueTree classes
-    // as intermediaries to make it easy to save and load complex data.
+    // Save all parameters using APVTS built-in state management
+    auto state = parameters.copyState();
+
+    // Add current preset index to the state
+    state.setProperty("currentPreset", currentPresetIndex, nullptr);
+
+    // Convert to XML and save to memory block
+    std::unique_ptr<juce::XmlElement> xml(state.createXml());
+    copyXmlToBinary(*xml, destData);
 }
 
 void ReverbDelayPluginAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    // You should use this method to restore your parameters from this memory block,
-    // whose contents will have been created by the getStateInformation() call.
+    // Restore parameters from saved state
+    std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
+
+    if (xmlState.get() != nullptr)
+    {
+        if (xmlState->hasTagName(parameters.state.getType()))
+        {
+            // Restore all parameters
+            auto state = juce::ValueTree::fromXml(*xmlState);
+            parameters.replaceState(state);
+
+            // Restore current preset index
+            if (state.hasProperty("currentPreset"))
+            {
+                currentPresetIndex = state.getProperty("currentPreset");
+            }
+        }
+    }
 }
 
 //==============================================================================
@@ -1041,6 +1063,9 @@ int ReverbDelayPluginAudioProcessor::getNumPresets()
 
 void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
 {
+    // Store current preset index
+    currentPresetIndex = presetIndex;
+
     switch (presetIndex)
     {
     case 0: // Telephone - Classic telephone effect with narrow frequency range
