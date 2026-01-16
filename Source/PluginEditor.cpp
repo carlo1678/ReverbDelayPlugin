@@ -214,6 +214,28 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     };
     addAndMakeVisible(presetBox);
 
+    // Restore preset selection from saved state
+    int savedPresetIndex = audioProcessor.getCurrentPresetIndex();
+    if (savedPresetIndex >= 0)
+    {
+        // Restore preset dropdown (IDs start at 1, index starts at 0)
+        presetBox.setSelectedId(savedPresetIndex + 1, juce::dontSendNotification);
+
+        // Restore visibility of preset-specific controls
+        bool isTelephonePreset = (savedPresetIndex == 0);
+        bool isUnderwaterPreset = (savedPresetIndex == 1);
+        bool isTapePreset = (savedPresetIndex == 2);
+        bool isRadioPreset = (savedPresetIndex == 3);
+
+        noiseSlider.setVisible(isTelephonePreset);
+        phaserMixSlider.setVisible(isTelephonePreset);
+        phaserSpeedSlider.setVisible(isTelephonePreset);
+        underwaterMixSlider.setVisible(isUnderwaterPreset);
+        mechanicalNoiseSlider.setVisible(isTapePreset);
+        radioNoiseSlider.setVisible(isRadioPreset);
+        presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset || isRadioPreset);
+    }
+
     presetLabel.setText("PRESET", juce::dontSendNotification);
     presetLabel.setJustificationType(juce::Justification::centred);
     presetLabel.setColour(juce::Label::textColourId, juce::Colours::white);
@@ -372,7 +394,8 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         audioProcessor.parameters.getParameter("underwater_mix")->setValueNotifyingHost(0.0f);
         audioProcessor.parameters.getParameter("mechanical_noise")->setValueNotifyingHost(0.0f);
 
-        // Reset preset selector
+        // Reset preset selector and clear processor's preset index
+        audioProcessor.clearPresetIndex();
         presetBox.setSelectedId(0);
 
         // Hide preset-specific controls

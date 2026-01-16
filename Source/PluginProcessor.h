@@ -31,6 +31,8 @@ public:
     void loadPreset(int presetIndex);
     juce::StringArray getPresetNames();
     int getNumPresets();
+    int getCurrentPresetIndex() const { return currentPresetIndex; }
+    void clearPresetIndex() { currentPresetIndex = -1; }
 
     // Parameter management (needs to be public for Editor access)
     juce::AudioProcessorValueTreeState parameters;
@@ -117,6 +119,9 @@ private:
     float lastLowCutFreq = 20.0f;
     float lastHighCutFreq = 20000.0f;
 
+    // Track last known BPM for tempo sync reliability
+    double lastKnownBpm = 120.0;
+
     // Pendulum panning state
     float pendulumPhase = 0.0f;
 
@@ -150,6 +155,9 @@ private:
     // Debug flags for one-time logging
     bool underwaterDebugLogged = false;
     bool mechanicalDebugLogged = false;
+
+    // Current preset index (-1 = no preset selected, 0-3 = preset index)
+    int currentPresetIndex = -1;
 
     // Helper methods to load audio samples
     void loadTelephoneNoise();
