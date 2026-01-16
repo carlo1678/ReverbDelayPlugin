@@ -160,6 +160,18 @@ void ReverbDelayPluginAudioProcessor::prepareToPlay(double sampleRate, int sampl
     // Store sample rate for filter coefficient updates
     lastSampleRate = sampleRate;
 
+    // Try to get initial BPM from host on startup
+    // This ensures tempo-synced delays work correctly from the first note
+    auto playHead = getPlayHead();
+    if (playHead != nullptr)
+    {
+        juce::Optional<juce::AudioPlayHead::PositionInfo> posInfo = playHead->getPosition();
+        if (posInfo.hasValue() && posInfo->getBpm().hasValue())
+        {
+            lastKnownBpm = *posInfo->getBpm();
+        }
+    }
+
     // Prepare filter chains
     juce::dsp::ProcessSpec spec;
     spec.sampleRate = sampleRate;
@@ -329,11 +341,11 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         int noteDivision = static_cast<int>(delayTimeValue / 3000.0f);
         if (noteDivision > 4) noteDivision = 4;
 
-        double bpm = 120.0; // Default tempo when not synced
+        double bpm = lastKnownBpm; // Use last known BPM (initialized in prepareToPlay)
 
         if (tempoSyncEnabled)
         {
-            // Get tempo from host
+            // Get tempo from host and update last known BPM
             auto playHead = getPlayHead();
             if (playHead != nullptr)
             {
@@ -341,6 +353,7 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 if (posInfo.hasValue() && posInfo->getBpm().hasValue())
                 {
                     bpm = *posInfo->getBpm();
+                    lastKnownBpm = bpm; // Store for next time
                 }
             }
         }
@@ -379,7 +392,7 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
     float pendulumFreq = 0.0f;
     if (pendulumPanEnabled)
     {
-        double bpm = 120.0; // Default tempo
+        double bpm = lastKnownBpm; // Use last known BPM
         auto playHead = getPlayHead();
         if (playHead != nullptr)
         {
@@ -387,6 +400,7 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
             if (posInfo.hasValue() && posInfo->getBpm().hasValue())
             {
                 bpm = *posInfo->getBpm();
+                lastKnownBpm = bpm; // Store for next time
             }
         }
 

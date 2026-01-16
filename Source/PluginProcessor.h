@@ -117,6 +117,9 @@ private:
     float lastLowCutFreq = 20.0f;
     float lastHighCutFreq = 20000.0f;
 
+    // Track last known BPM for tempo sync reliability
+    double lastKnownBpm = 120.0;
+
     // Pendulum panning state
     float pendulumPhase = 0.0f;
 
