@@ -924,6 +924,13 @@ void ReverbDelayPluginAudioProcessor::setStateInformation (const void* data, int
             if (state.hasProperty("currentPreset"))
             {
                 currentPresetIndex = state.getProperty("currentPreset");
+
+                // If a preset was selected, reload it to ensure all parameters match preset defaults
+                // This ensures TIME is always at 1/2 note for all presets, regardless of user modifications
+                if (currentPresetIndex >= 0)
+                {
+                    loadPreset(currentPresetIndex);
+                }
             }
         }
     }
