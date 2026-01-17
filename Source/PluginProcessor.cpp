@@ -1113,8 +1113,9 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off for vintage feel
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(55.0f); // 55 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(4700.0f); // 4700 Hz
+        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.00005f); // 55 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0034f); // 4700 Hz
         parameters.getParameter("wow")->setValueNotifyingHost(0.16f); // 16% (tape warble)
         parameters.getParameter("flutter")->setValueNotifyingHost(0.05f); // 5%
         parameters.getParameter("mechanical_noise")->setValueNotifyingHost(0.30f); // 30% mechanical noise
@@ -1128,8 +1129,9 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(290.0f); // 290 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(3550.0f); // 3550 Hz
+        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.0136f); // 290 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0015f); // 3550 Hz
         parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("radio_noise")->setValueNotifyingHost(0.0f); // 0% (off by default)
