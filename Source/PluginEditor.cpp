@@ -119,18 +119,18 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     pendulumSpeedSlider.setRange(0.0, 6.0, 1.0);
     pendulumSpeedSlider.setValue(4.0); // Default to 1/4 Bar
 
-    // Custom text display for tempo divisions
+    // Custom text display for tempo divisions (all synced to project BPM)
     pendulumSpeedSlider.textFromValueFunction = [](double value) {
         int index = static_cast<int>(value);
         switch (index) {
             case 0: return juce::String("4 Bar");
             case 1: return juce::String("2 Bar");
             case 2: return juce::String("1 Bar");
-            case 3: return juce::String("1/2");
-            case 4: return juce::String("1/4");
-            case 5: return juce::String("1/8");
-            case 6: return juce::String("1/16");
-            default: return juce::String("1/4");
+            case 3: return juce::String("1/2 Bar");
+            case 4: return juce::String("1/4 Bar");
+            case 5: return juce::String("1/8 Bar");
+            case 6: return juce::String("1/16 Bar");
+            default: return juce::String("1/4 Bar");
         }
     };
 
