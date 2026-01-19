@@ -916,7 +916,7 @@ void ReverbDelayPluginAudioProcessor::setStateInformation (const void* data, int
     {
         if (xmlState->hasTagName(parameters.state.getType()))
         {
-            // Restore all parameters
+            // Restore all parameters exactly as they were saved
             auto state = juce::ValueTree::fromXml(*xmlState);
             parameters.replaceState(state);
 
@@ -924,13 +924,6 @@ void ReverbDelayPluginAudioProcessor::setStateInformation (const void* data, int
             if (state.hasProperty("currentPreset"))
             {
                 currentPresetIndex = state.getProperty("currentPreset");
-
-                // If a preset was selected, reload it to ensure all parameters match preset defaults
-                // This ensures TIME is always at 1/2 note for all presets, regardless of user modifications
-                if (currentPresetIndex >= 0)
-                {
-                    loadPreset(currentPresetIndex);
-                }
             }
         }
     }
@@ -1108,9 +1101,9 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
     case 2: // Tape - Classic cassette tape feel with wow and flutter
         parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
         parameters.getParameter("delay_time")->setValueNotifyingHost(9000.0f / 15000.0f); // 1/2 note
-        parameters.getParameter("time_mode")->setValueNotifyingHost(0.33f); // Time mode (index 1)
+        parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.50f); // Moderate feedback
-        parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off for vintage feel
+        parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On (for tempo sync with Notes mode)
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
         // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
