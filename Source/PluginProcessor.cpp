@@ -30,6 +30,7 @@ parameters(*this, nullptr, "Parameters", createParameterLayout())
     delayTimeParam = parameters.getRawParameterValue("delay_time");
     delayFeedbackParam = parameters.getRawParameterValue("delay_feedback");
     reverseDelayParam = parameters.getRawParameterValue("reverse_delay");
+    reverseWetParam = parameters.getRawParameterValue("reverse_wet");
     tempoSyncParam = parameters.getRawParameterValue("tempo_sync");
     pingPongParam = parameters.getRawParameterValue("ping_pong");
     timeModeParam = parameters.getRawParameterValue("time_mode");
@@ -159,6 +160,17 @@ void ReverbDelayPluginAudioProcessor::prepareToPlay(double sampleRate, int sampl
 
     // Store sample rate for filter coefficient updates
     lastSampleRate = sampleRate;
+
+    // Prepare independent reverse effect buffers (1/2 note at 120 BPM default, max 4 seconds for safety)
+    int maxReverseSamples = static_cast<int>(sampleRate * 4.0); // 4 seconds max
+    reverseCaptureBufferLeft.resize(maxReverseSamples, 0.0f);
+    reverseCaptureBufferRight.resize(maxReverseSamples, 0.0f);
+    reversePlaybackBufferLeft.resize(maxReverseSamples, 0.0f);
+    reversePlaybackBufferRight.resize(maxReverseSamples, 0.0f);
+    reverseCapturePos = 0;
+    reversePlaybackPos = 0;
+    reverseIsCapturing = true;
+    reverseBufferReady = false;
 
     // Try to get initial BPM from host on startup
     // This ensures tempo-synced delays work correctly from the first note
@@ -426,6 +438,34 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         pendulumFreq = static_cast<float>(beatsPerSecond / beatsPerCycle);
     }
 
+    // Calculate reverse chunk size (always 1/2 note, tempo-synced)
+    if (reverseEnabled)
+    {
+        double bpm = lastKnownBpm;
+        auto playHead = getPlayHead();
+        if (playHead != nullptr)
+        {
+            juce::Optional<juce::AudioPlayHead::PositionInfo> posInfo = playHead->getPosition();
+            if (posInfo.hasValue() && posInfo->getBpm().hasValue())
+            {
+                bpm = *posInfo->getBpm();
+                lastKnownBpm = bpm;
+            }
+        }
+
+        // Calculate samples for 1/2 note: (60 / BPM) * sampleRate * 2 beats
+        double secondsPerBeat = 60.0 / bpm;
+        double secondsPerHalfNote = secondsPerBeat * 2.0; // 2 beats = 1/2 note in 4/4 time
+        reverseChunkSize = static_cast<int>(secondsPerHalfNote * lastSampleRate);
+
+        // Clamp to buffer size
+        int maxSize = static_cast<int>(reverseCaptureBufferLeft.size());
+        if (reverseChunkSize > maxSize)
+            reverseChunkSize = maxSize;
+        if (reverseChunkSize < 1)
+            reverseChunkSize = 1;
+    }
+
     // Process stereo channels
     if (totalNumInputChannels >= 2)
     {
@@ -441,8 +481,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 float rightInput = rightChannel[sample];
 
                 // Process delays (left delay goes to right, right delay goes to left)
-                float leftDelayed = delayLineLeft.processSample(rightInput, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
-                float rightDelayed = delayLineRight.processSample(leftInput, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
+                float leftDelayed = delayLineLeft.processSample(rightInput, delayTime, feedback, pitchShift, wow, flutter);
+                float rightDelayed = delayLineRight.processSample(leftInput, delayTime, feedback, pitchShift, wow, flutter);
 
                 // Apply filters to delayed signal
                 leftDelayed = lowCutFilterLeft.get<0>().processSample(leftDelayed);
@@ -618,9 +658,84 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                         radioNoiseReadPos = 0;
                 }
 
+                // Process independent reverse effect (tempo-synced at 1/2 note)
+                float leftReversed = 0.0f;
+                float rightReversed = 0.0f;
+
+                if (reverseEnabled)
+                {
+                    if (reverseIsCapturing)
+                    {
+                        // Capture incoming dry audio
+                        reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
+                        reverseCaptureBufferRight[reverseCapturePos] = rightInput;
+                        reverseCapturePos++;
+
+                        // When capture buffer is full, reverse it
+                        if (reverseCapturePos >= reverseChunkSize)
+                        {
+                            // Reverse the captured audio into playback buffers
+                            for (int i = 0; i < reverseChunkSize; ++i)
+                            {
+                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
+                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseChunkSize - 1 - i];
+                            }
+
+                            // Switch to playback mode
+                            reverseIsCapturing = false;
+                            reversePlaybackPos = 0;
+                            reverseCapturePos = 0;
+                            reverseBufferReady = true;
+                        }
+
+                        // Output reversed audio if available
+                        if (reverseBufferReady)
+                        {
+                            leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
+                            rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
+                            reversePlaybackPos++;
+                        }
+                    }
+                    else
+                    {
+                        // Playback reversed audio while capturing new audio
+                        leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
+                        rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
+                        reversePlaybackPos++;
+
+                        // Simultaneously capture new audio
+                        reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
+                        reverseCaptureBufferRight[reverseCapturePos] = rightInput;
+                        reverseCapturePos++;
+
+                        // When both buffers complete, reverse and restart
+                        if (reversePlaybackPos >= reverseChunkSize && reverseCapturePos >= reverseChunkSize)
+                        {
+                            // Reverse the newly captured audio
+                            for (int i = 0; i < reverseChunkSize; ++i)
+                            {
+                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
+                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseChunkSize - 1 - i];
+                            }
+
+                            // Restart both playback and capture
+                            reversePlaybackPos = 0;
+                            reverseCapturePos = 0;
+                        }
+                    }
+                }
+
                 // Mix dry and wet (swapped for ping pong)
                 float finalLeft = leftInput * (1.0f - mix) + leftDelayed * mix;
                 float finalRight = rightInput * (1.0f - mix) + rightDelayed * mix;
+
+                // Layer reversed audio on top (independent from delay)
+                if (reverseEnabled)
+                {
+                    float reverseWet = reverseWetParam->load() / 100.0f; // Convert 0-100 to 0-1
+                    finalLeft += leftReversed * reverseWet;
+                    finalRight += rightReversed * reverseWet;
+                }
 
                 // Apply pendulum panning to final mixed output
                 if (pendulumPanEnabled)
@@ -653,8 +768,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 float leftInput = leftChannel[sample];
                 float rightInput = rightChannel[sample];
 
-                float leftDelayed = delayLineLeft.processSample(leftInput, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
-                float rightDelayed = delayLineRight.processSample(rightInput, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
+                float leftDelayed = delayLineLeft.processSample(leftInput, delayTime, feedback, pitchShift, wow, flutter);
+                float rightDelayed = delayLineRight.processSample(rightInput, delayTime, feedback, pitchShift, wow, flutter);
 
                 // Apply filters to delayed signal
                 leftDelayed = lowCutFilterLeft.get<0>().processSample(leftDelayed);
@@ -830,9 +945,84 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                         radioNoiseReadPos = 0;
                 }
 
+                // Process independent reverse effect (tempo-synced at 1/2 note)
+                float leftReversed = 0.0f;
+                float rightReversed = 0.0f;
+
+                if (reverseEnabled)
+                {
+                    if (reverseIsCapturing)
+                    {
+                        // Capture incoming dry audio
+                        reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
+                        reverseCaptureBufferRight[reverseCapturePos] = rightInput;
+                        reverseCapturePos++;
+
+                        // When capture buffer is full, reverse it
+                        if (reverseCapturePos >= reverseChunkSize)
+                        {
+                            // Reverse the captured audio into playback buffers
+                            for (int i = 0; i < reverseChunkSize; ++i)
+                            {
+                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
+                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseChunkSize - 1 - i];
+                            }
+
+                            // Switch to playback mode
+                            reverseIsCapturing = false;
+                            reversePlaybackPos = 0;
+                            reverseCapturePos = 0;
+                            reverseBufferReady = true;
+                        }
+
+                        // Output reversed audio if available
+                        if (reverseBufferReady)
+                        {
+                            leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
+                            rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
+                            reversePlaybackPos++;
+                        }
+                    }
+                    else
+                    {
+                        // Playback reversed audio while capturing new audio
+                        leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
+                        rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
+                        reversePlaybackPos++;
+
+                        // Simultaneously capture new audio
+                        reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
+                        reverseCaptureBufferRight[reverseCapturePos] = rightInput;
+                        reverseCapturePos++;
+
+                        // When both buffers complete, reverse and restart
+                        if (reversePlaybackPos >= reverseChunkSize && reverseCapturePos >= reverseChunkSize)
+                        {
+                            // Reverse the newly captured audio
+                            for (int i = 0; i < reverseChunkSize; ++i)
+                            {
+                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
+                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseChunkSize - 1 - i];
+                            }
+
+                            // Restart both playback and capture
+                            reversePlaybackPos = 0;
+                            reverseCapturePos = 0;
+                        }
+                    }
+                }
+
                 // Mix dry and wet signals
                 float finalLeft = leftInput * (1.0f - mix) + leftDelayed * mix;
                 float finalRight = rightInput * (1.0f - mix) + rightDelayed * mix;
+
+                // Layer reversed audio on top (independent from delay)
+                if (reverseEnabled)
+                {
+                    float reverseWet = reverseWetParam->load() / 100.0f; // Convert 0-100 to 0-1
+                    finalLeft += leftReversed * reverseWet;
+                    finalRight += rightReversed * reverseWet;
+                }
 
                 // Apply pendulum panning to final mixed output
                 if (pendulumPanEnabled)
@@ -866,7 +1056,7 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
         {
             float input = leftChannel[sample];
-            float delayed = delayLineLeft.processSample(input, delayTime, feedback, pitchShift, reverseEnabled, wow, flutter);
+            float delayed = delayLineLeft.processSample(input, delayTime, feedback, pitchShift, wow, flutter);
 
             // Apply filters to delayed signal
             delayed = lowCutFilterLeft.get<0>().processSample(delayed);
@@ -876,7 +1066,77 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
             delayed = highCutFilterLeft.get<1>().processSample(delayed);
             delayed = highCutFilterLeft.get<2>().processSample(delayed);
 
-            leftChannel[sample] = input * (1.0f - mix) + delayed * mix;
+            // Process independent reverse effect (tempo-synced at 1/2 note, mono)
+            float reversed = 0.0f;
+
+            if (reverseEnabled)
+            {
+                if (reverseIsCapturing)
+                {
+                    // Capture incoming dry audio
+                    reverseCaptureBufferLeft[reverseCapturePos] = input;
+                    reverseCapturePos++;
+
+                    // When capture buffer is full, reverse it
+                    if (reverseCapturePos >= reverseChunkSize)
+                    {
+                        // Reverse the captured audio into playback buffer
+                        for (int i = 0; i < reverseChunkSize; ++i)
+                        {
+                            reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
+                        }
+
+                        // Switch to playback mode
+                        reverseIsCapturing = false;
+                        reversePlaybackPos = 0;
+                        reverseCapturePos = 0;
+                        reverseBufferReady = true;
+                    }
+
+                    // Output reversed audio if available
+                    if (reverseBufferReady)
+                    {
+                        reversed = reversePlaybackBufferLeft[reversePlaybackPos];
+                        reversePlaybackPos++;
+                    }
+                }
+                else
+                {
+                    // Playback reversed audio while capturing new audio
+                    reversed = reversePlaybackBufferLeft[reversePlaybackPos];
+                    reversePlaybackPos++;
+
+                    // Simultaneously capture new audio
+                    reverseCaptureBufferLeft[reverseCapturePos] = input;
+                    reverseCapturePos++;
+
+                    // When both buffers complete, reverse and restart
+                    if (reversePlaybackPos >= reverseChunkSize && reverseCapturePos >= reverseChunkSize)
+                    {
+                        // Reverse the newly captured audio
+                        for (int i = 0; i < reverseChunkSize; ++i)
+                        {
+                            reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
+                        }
+
+                        // Restart both playback and capture
+                        reversePlaybackPos = 0;
+                        reverseCapturePos = 0;
+                    }
+                }
+            }
+
+            // Mix dry and delayed signal
+            float final = input * (1.0f - mix) + delayed * mix;
+
+            // Layer reversed audio on top (independent from delay)
+            if (reverseEnabled)
+            {
+                float reverseWet = reverseWetParam->load() / 100.0f; // Convert 0-100 to 0-1
+                final += reversed * reverseWet;
+            }
+
+            leftChannel[sample] = final;
         }
     }
 
@@ -916,7 +1176,7 @@ void ReverbDelayPluginAudioProcessor::setStateInformation (const void* data, int
     {
         if (xmlState->hasTagName(parameters.state.getType()))
         {
-            // Restore all parameters
+            // Restore all parameters exactly as they were saved
             auto state = juce::ValueTree::fromXml(*xmlState);
             parameters.replaceState(state);
 
@@ -958,9 +1218,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
         "tempo_sync", "Tempo Sync", false));
 
 
-    // Reverse Delay
+    // Reverse Effect (independent tempo-synced reverse, always at 1/2 note)
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        "reverse_delay", "Reverse", false));
+
+    // Reverse Wet Mix (0-100%)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        "reverse_delay", "Reverse Delay", 0.0f, 1.0f, 0.0f));
+        "reverse_wet", "Reverse Wet", 0.0f, 100.0f, 50.0f));
 
     // Ping Pong (stereo bouncing delay)
     params.push_back(std::make_unique<juce::AudioParameterBool>(
@@ -1075,9 +1339,11 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.30f); // Moderate feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(290.0f); // 290 Hz (high pass - cuts low end)
-        parameters.getParameter("high_cut")->setValueNotifyingHost(4000.0f); // 4000 Hz (low pass - cuts high end)
+        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.0136f); // 290 Hz (high pass - cuts low end)
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0044f); // 4000 Hz (low pass - cuts high end)
         parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         break;
@@ -1089,6 +1355,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.65f); // High feedback for swirly effect
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("low_cut")->setValueNotifyingHost(0.0f); // 20 Hz (minimum - keep bass)
         parameters.getParameter("high_cut")->setValueNotifyingHost(0.05f); // ~1500 Hz (heavy high cut)
@@ -1100,13 +1367,15 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
     case 2: // Tape - Classic cassette tape feel with wow and flutter
         parameters.getParameter("mix")->setValueNotifyingHost(0.50f); // 50%
         parameters.getParameter("delay_time")->setValueNotifyingHost(9000.0f / 15000.0f); // 1/2 note
-        parameters.getParameter("time_mode")->setValueNotifyingHost(0.33f); // Time mode (index 1)
+        parameters.getParameter("time_mode")->setValueNotifyingHost(0.0f); // Notes mode
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.50f); // Moderate feedback
-        parameters.getParameter("tempo_sync")->setValueNotifyingHost(0.0f); // Off for vintage feel
+        parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On (for tempo sync with Notes mode)
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(55.0f); // 55 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(4700.0f); // 4700 Hz
+        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.00005f); // 55 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0034f); // 4700 Hz
         parameters.getParameter("wow")->setValueNotifyingHost(0.16f); // 16% (tape warble)
         parameters.getParameter("flutter")->setValueNotifyingHost(0.05f); // 5%
         parameters.getParameter("mechanical_noise")->setValueNotifyingHost(0.30f); // 30% mechanical noise
@@ -1119,9 +1388,11 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("delay_feedback")->setValueNotifyingHost(0.20f); // Low feedback
         parameters.getParameter("tempo_sync")->setValueNotifyingHost(1.0f); // On
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
+        parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(290.0f); // 290 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(3550.0f); // 3550 Hz
+        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.0136f); // 290 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0015f); // 3550 Hz
         parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("radio_noise")->setValueNotifyingHost(0.0f); // 0% (off by default)

@@ -81,6 +81,7 @@ private:
     std::atomic<float>* delayTimeParam = nullptr;
     std::atomic<float>* delayFeedbackParam = nullptr;
     std::atomic<float>* reverseDelayParam = nullptr;
+    std::atomic<float>* reverseWetParam = nullptr;
     std::atomic<float>* tempoSyncParam = nullptr;
     std::atomic<float>* pingPongParam = nullptr;
     std::atomic<float>* timeModeParam = nullptr;
@@ -127,6 +128,17 @@ private:
 
     // Phaser state
     float phaserPhase = 0.0f;
+
+    // Independent reverse effect state (tempo-synced at 1/2 note)
+    std::vector<float> reverseCaptureBufferLeft;
+    std::vector<float> reverseCaptureBufferRight;
+    std::vector<float> reversePlaybackBufferLeft;
+    std::vector<float> reversePlaybackBufferRight;
+    int reverseCapturePos = 0;
+    int reversePlaybackPos = 0;
+    int reverseChunkSize = 0;
+    bool reverseIsCapturing = true;
+    bool reverseBufferReady = false;
 
     // Telephone noise sample buffer and playback position
     juce::AudioBuffer<float> telephoneNoiseSample;
