@@ -571,35 +571,36 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 }
 
                 // Layer underwater sound effect (underwater preset only)
+                // Bubbles volume modulated by DELAYED signal envelope for natural breathing effect
                 if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
                 {
-                    // Debug: Log first time underwater effect is triggered
-                    if (!underwaterDebugLogged)
-                    {
-                        DBG(">>> UNDERWATER EFFECT ACTIVE: Mix=" + juce::String(underwaterMix) + ", Samples=" + juce::String(underwaterSoundSample.getNumSamples()));
-                        underwaterDebugLogged = true;
-                    }
+                    // Calculate signal level from DELAYED signal (average of left and right)
+                    // This makes bubbles fade with the delay tail
+                    float delayedLevel = (std::abs(leftDelayed) + std::abs(rightDelayed)) * 0.5f;
 
-                    // Calculate signal level from input signal (average of left and right)
-                    float inputLevel = (std::abs(leftInput) + std::abs(rightInput)) * 0.5f;
+                    // Envelope follower with attack/release for smooth breathing
+                    // Attack: 5ms (fast response), Release: 150ms (smooth fade)
+                    float attackCoeff = 0.95f;  // Fast attack
+                    float releaseCoeff = 0.998f; // Slow release for natural decay
 
-                    // Update underwater envelope with attack/release
-                    if (inputLevel > underwaterEnvelope)
-                        underwaterEnvelope = inputLevel + envelopeAttack * (underwaterEnvelope - inputLevel);
+                    if (delayedLevel > underwaterEnvelope)
+                        underwaterEnvelope = delayedLevel * (1.0f - attackCoeff) + underwaterEnvelope * attackCoeff;
                     else
-                        underwaterEnvelope = inputLevel + envelopeRelease * (underwaterEnvelope - inputLevel);
+                        underwaterEnvelope = delayedLevel * (1.0f - releaseCoeff) + underwaterEnvelope * releaseCoeff;
 
-                    // Read from underwater sound buffer (loop if necessary)
+                    // Read from underwater sound buffer (loop continuously)
                     int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
                     float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
 
-                    // Apply envelope to underwater sound with +6dB boost for audibility
-                    underwaterSample *= underwaterEnvelope * 2.0f;
+                    // Apply envelope follower to bubble audio
+                    // Gain multiplier = envelope * underwater_mix * max_bubble_level
+                    float maxBubbleLevel = 0.6f; // Cap bubbles at 60% to prevent overpowering delay
+                    float bubbleGain = underwaterEnvelope * underwaterMix * maxBubbleLevel;
+                    underwaterSample *= bubbleGain;
 
-                    // Layer underwater sound with the input (not just delayed signal)
-                    // This creates the underwater ambience effect
-                    leftInput += underwaterSample * underwaterMix;
-                    rightInput += underwaterSample * underwaterMix;
+                    // Layer bubbles onto delayed signal (breathing with the delay tail)
+                    leftDelayed += underwaterSample;
+                    rightDelayed += underwaterSample;
 
                     // Increment and wrap read position
                     underwaterSoundReadPos++;
@@ -886,35 +887,36 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 }
 
                 // Layer underwater sound effect (underwater preset only)
+                // Bubbles volume modulated by DELAYED signal envelope for natural breathing effect
                 if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
                 {
-                    // Debug: Log first time underwater effect is triggered
-                    if (!underwaterDebugLogged)
-                    {
-                        DBG(">>> UNDERWATER EFFECT ACTIVE: Mix=" + juce::String(underwaterMix) + ", Samples=" + juce::String(underwaterSoundSample.getNumSamples()));
-                        underwaterDebugLogged = true;
-                    }
+                    // Calculate signal level from DELAYED signal (average of left and right)
+                    // This makes bubbles fade with the delay tail
+                    float delayedLevel = (std::abs(leftDelayed) + std::abs(rightDelayed)) * 0.5f;
 
-                    // Calculate signal level from input signal (average of left and right)
-                    float inputLevel = (std::abs(leftInput) + std::abs(rightInput)) * 0.5f;
+                    // Envelope follower with attack/release for smooth breathing
+                    // Attack: 5ms (fast response), Release: 150ms (smooth fade)
+                    float attackCoeff = 0.95f;  // Fast attack
+                    float releaseCoeff = 0.998f; // Slow release for natural decay
 
-                    // Update underwater envelope with attack/release
-                    if (inputLevel > underwaterEnvelope)
-                        underwaterEnvelope = inputLevel + envelopeAttack * (underwaterEnvelope - inputLevel);
+                    if (delayedLevel > underwaterEnvelope)
+                        underwaterEnvelope = delayedLevel * (1.0f - attackCoeff) + underwaterEnvelope * attackCoeff;
                     else
-                        underwaterEnvelope = inputLevel + envelopeRelease * (underwaterEnvelope - inputLevel);
+                        underwaterEnvelope = delayedLevel * (1.0f - releaseCoeff) + underwaterEnvelope * releaseCoeff;
 
-                    // Read from underwater sound buffer (loop if necessary)
+                    // Read from underwater sound buffer (loop continuously)
                     int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
                     float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
 
-                    // Apply envelope to underwater sound with +6dB boost for audibility
-                    underwaterSample *= underwaterEnvelope * 2.0f;
+                    // Apply envelope follower to bubble audio
+                    // Gain multiplier = envelope * underwater_mix * max_bubble_level
+                    float maxBubbleLevel = 0.6f; // Cap bubbles at 60% to prevent overpowering delay
+                    float bubbleGain = underwaterEnvelope * underwaterMix * maxBubbleLevel;
+                    underwaterSample *= bubbleGain;
 
-                    // Layer underwater sound with the input (not just delayed signal)
-                    // This creates the underwater ambience effect
-                    leftInput += underwaterSample * underwaterMix;
-                    rightInput += underwaterSample * underwaterMix;
+                    // Layer bubbles onto delayed signal (breathing with the delay tail)
+                    leftDelayed += underwaterSample;
+                    rightDelayed += underwaterSample;
 
                     // Increment and wrap read position
                     underwaterSoundReadPos++;
