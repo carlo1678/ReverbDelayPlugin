@@ -1357,8 +1357,8 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(0.0f); // 20 Hz (minimum - keep bass)
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.416f); // 1500 Hz (heavy high cut)
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.00035f); // 110 Hz (high pass - removes very low frequencies)
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0000064f); // 650 Hz (low pass - dark, muffled underwater sound)
         parameters.getParameter("wow")->setValueNotifyingHost(0.05f); // 5%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.05f); // 5%
         parameters.getParameter("underwater_mix")->setValueNotifyingHost(0.50f); // 50% underwater sound
