@@ -214,28 +214,6 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
     };
     addAndMakeVisible(presetBox);
 
-    // Restore preset selection from saved state
-    int savedPresetIndex = audioProcessor.getCurrentPresetIndex();
-    if (savedPresetIndex >= 0)
-    {
-        // Restore preset dropdown (IDs start at 1, index starts at 0)
-        presetBox.setSelectedId(savedPresetIndex + 1, juce::dontSendNotification);
-
-        // Restore visibility of preset-specific controls
-        bool isTelephonePreset = (savedPresetIndex == 0);
-        bool isUnderwaterPreset = (savedPresetIndex == 1);
-        bool isTapePreset = (savedPresetIndex == 2);
-        bool isRadioPreset = (savedPresetIndex == 3);
-
-        noiseSlider.setVisible(isTelephonePreset);
-        phaserMixSlider.setVisible(isTelephonePreset);
-        phaserSpeedSlider.setVisible(isTelephonePreset);
-        underwaterMixSlider.setVisible(isUnderwaterPreset);
-        mechanicalNoiseSlider.setVisible(isTapePreset);
-        radioNoiseSlider.setVisible(isRadioPreset);
-        presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset || isRadioPreset);
-    }
-
     presetLabel.setText("PRESET", juce::dontSendNotification);
     presetLabel.setJustificationType(juce::Justification::centred);
     presetLabel.setColour(juce::Label::textColourId, juce::Colours::white);
@@ -409,6 +387,29 @@ ReverbDelayPluginAudioProcessorEditor::ReverbDelayPluginAudioProcessorEditor(Rev
         presetEfxLabel.setVisible(false);
     };
     addAndMakeVisible(resetButton);
+
+    // IMPORTANT: Restore preset selection and UI state at the END of constructor
+    // This must happen AFTER all sliders are initialized to prevent visibility being overridden
+    int savedPresetIndex = audioProcessor.getCurrentPresetIndex();
+    if (savedPresetIndex >= 0)
+    {
+        // Restore preset dropdown (IDs start at 1, index starts at 0)
+        presetBox.setSelectedId(savedPresetIndex + 1, juce::dontSendNotification);
+
+        // Restore visibility of preset-specific controls based on saved preset
+        bool isTelephonePreset = (savedPresetIndex == 0);
+        bool isUnderwaterPreset = (savedPresetIndex == 1);
+        bool isTapePreset = (savedPresetIndex == 2);
+        bool isRadioPreset = (savedPresetIndex == 3);
+
+        noiseSlider.setVisible(isTelephonePreset);
+        phaserMixSlider.setVisible(isTelephonePreset);
+        phaserSpeedSlider.setVisible(isTelephonePreset);
+        underwaterMixSlider.setVisible(isUnderwaterPreset);
+        mechanicalNoiseSlider.setVisible(isTapePreset);
+        radioNoiseSlider.setVisible(isRadioPreset);
+        presetEfxLabel.setVisible(isTelephonePreset || isUnderwaterPreset || isTapePreset || isRadioPreset);
+    }
 }
 
 

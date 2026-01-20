@@ -169,8 +169,13 @@ void ReverbDelayPluginAudioProcessor::prepareToPlay(double sampleRate, int sampl
     reversePlaybackBufferRight.resize(maxReverseSamples, 0.0f);
     reverseCapturePos = 0;
     reversePlaybackPos = 0;
+    reverseChunkSize = 0;
+    reverseLockedChunkSize = 0;
     reverseIsCapturing = true;
     reverseBufferReady = false;
+
+    // Set crossfade length to 15ms to avoid clicks/pops
+    reverseCrossfadeLength = static_cast<int>(sampleRate * 0.015); // 15ms crossfade
 
     // Try to get initial BPM from host on startup
     // This ensures tempo-synced delays work correctly from the first note
@@ -438,7 +443,9 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         pendulumFreq = static_cast<float>(beatsPerSecond / beatsPerCycle);
     }
 
-    // Calculate reverse chunk size (always 1/2 note, tempo-synced)
+    // Calculate desired reverse chunk size (always 1/2 note, tempo-synced)
+    // Don't update locked size mid-operation - only when starting new capture
+    int desiredReverseChunkSize = 0;
     if (reverseEnabled)
     {
         double bpm = lastKnownBpm;
@@ -456,14 +463,23 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         // Calculate samples for 1/2 note: (60 / BPM) * sampleRate * 2 beats
         double secondsPerBeat = 60.0 / bpm;
         double secondsPerHalfNote = secondsPerBeat * 2.0; // 2 beats = 1/2 note in 4/4 time
-        reverseChunkSize = static_cast<int>(secondsPerHalfNote * lastSampleRate);
+        desiredReverseChunkSize = static_cast<int>(secondsPerHalfNote * lastSampleRate);
 
         // Clamp to buffer size
         int maxSize = static_cast<int>(reverseCaptureBufferLeft.size());
-        if (reverseChunkSize > maxSize)
-            reverseChunkSize = maxSize;
-        if (reverseChunkSize < 1)
-            reverseChunkSize = 1;
+        if (desiredReverseChunkSize > maxSize)
+            desiredReverseChunkSize = maxSize;
+        if (desiredReverseChunkSize < reverseCrossfadeLength * 2)
+            desiredReverseChunkSize = reverseCrossfadeLength * 2; // Minimum size for crossfading
+    }
+    else
+    {
+        // Reset reverse state when disabled
+        reverseIsCapturing = true;
+        reverseCapturePos = 0;
+        reversePlaybackPos = 0;
+        reverseBufferReady = false;
+        reverseLockedChunkSize = 0;
     }
 
     // Process stereo channels
@@ -555,35 +571,36 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 }
 
                 // Layer underwater sound effect (underwater preset only)
+                // Bubbles volume modulated by DELAYED signal envelope for natural breathing effect
                 if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
                 {
-                    // Debug: Log first time underwater effect is triggered
-                    if (!underwaterDebugLogged)
-                    {
-                        DBG(">>> UNDERWATER EFFECT ACTIVE: Mix=" + juce::String(underwaterMix) + ", Samples=" + juce::String(underwaterSoundSample.getNumSamples()));
-                        underwaterDebugLogged = true;
-                    }
+                    // Calculate signal level from DELAYED signal (average of left and right)
+                    // This makes bubbles fade with the delay tail
+                    float delayedLevel = (std::abs(leftDelayed) + std::abs(rightDelayed)) * 0.5f;
 
-                    // Calculate signal level from input signal (average of left and right)
-                    float inputLevel = (std::abs(leftInput) + std::abs(rightInput)) * 0.5f;
+                    // Envelope follower with attack/release for smooth breathing
+                    // Attack: 5ms (fast response), Release: 150ms (smooth fade)
+                    float attackCoeff = 0.95f;  // Fast attack
+                    float releaseCoeff = 0.998f; // Slow release for natural decay
 
-                    // Update underwater envelope with attack/release
-                    if (inputLevel > underwaterEnvelope)
-                        underwaterEnvelope = inputLevel + envelopeAttack * (underwaterEnvelope - inputLevel);
+                    if (delayedLevel > underwaterEnvelope)
+                        underwaterEnvelope = delayedLevel * (1.0f - attackCoeff) + underwaterEnvelope * attackCoeff;
                     else
-                        underwaterEnvelope = inputLevel + envelopeRelease * (underwaterEnvelope - inputLevel);
+                        underwaterEnvelope = delayedLevel * (1.0f - releaseCoeff) + underwaterEnvelope * releaseCoeff;
 
-                    // Read from underwater sound buffer (loop if necessary)
+                    // Read from underwater sound buffer (loop continuously)
                     int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
                     float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
 
-                    // Apply envelope to underwater sound with +6dB boost for audibility
-                    underwaterSample *= underwaterEnvelope * 2.0f;
+                    // Apply envelope follower to bubble audio
+                    // Gain multiplier = envelope * underwater_mix * max_bubble_level
+                    float maxBubbleLevel = 0.6f; // Cap bubbles at 60% to prevent overpowering delay
+                    float bubbleGain = underwaterEnvelope * underwaterMix * maxBubbleLevel;
+                    underwaterSample *= bubbleGain;
 
-                    // Layer underwater sound with the input (not just delayed signal)
-                    // This creates the underwater ambience effect
-                    leftInput += underwaterSample * underwaterMix;
-                    rightInput += underwaterSample * underwaterMix;
+                    // Layer bubbles onto delayed signal (breathing with the delay tail)
+                    leftDelayed += underwaterSample;
+                    rightDelayed += underwaterSample;
 
                     // Increment and wrap read position
                     underwaterSoundReadPos++;
@@ -664,21 +681,30 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
 
                 if (reverseEnabled)
                 {
+                    // Lock chunk size at start of new capture to prevent mid-operation changes
+                    if (reverseIsCapturing && reverseCapturePos == 0)
+                    {
+                        reverseLockedChunkSize = desiredReverseChunkSize;
+                    }
+
                     if (reverseIsCapturing)
                     {
                         // Capture incoming dry audio
-                        reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
-                        reverseCaptureBufferRight[reverseCapturePos] = rightInput;
-                        reverseCapturePos++;
+                        if (reverseCapturePos < reverseLockedChunkSize)
+                        {
+                            reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
+                            reverseCaptureBufferRight[reverseCapturePos] = rightInput;
+                            reverseCapturePos++;
+                        }
 
                         // When capture buffer is full, reverse it
-                        if (reverseCapturePos >= reverseChunkSize)
+                        if (reverseCapturePos >= reverseLockedChunkSize)
                         {
                             // Reverse the captured audio into playback buffers
-                            for (int i = 0; i < reverseChunkSize; ++i)
+                            for (int i = 0; i < reverseLockedChunkSize; ++i)
                             {
-                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
-                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseChunkSize - 1 - i];
+                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseLockedChunkSize - 1 - i];
+                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseLockedChunkSize - 1 - i];
                             }
 
                             // Switch to playback mode
@@ -688,8 +714,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                             reverseBufferReady = true;
                         }
 
-                        // Output reversed audio if available
-                        if (reverseBufferReady)
+                        // Output reversed audio if available (with crossfade)
+                        if (reverseBufferReady && reversePlaybackPos < reverseLockedChunkSize)
                         {
                             leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
                             rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
@@ -699,28 +725,47 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     else
                     {
                         // Playback reversed audio while capturing new audio
-                        leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
-                        rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
-                        reversePlaybackPos++;
+                        if (reversePlaybackPos < reverseLockedChunkSize)
+                        {
+                            leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
+                            rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
+
+                            // Apply crossfade at the end of playback to smooth transition
+                            int crossfadeStart = reverseLockedChunkSize - reverseCrossfadeLength;
+                            if (reversePlaybackPos >= crossfadeStart)
+                            {
+                                float crossfadeGain = 1.0f - (static_cast<float>(reversePlaybackPos - crossfadeStart) / static_cast<float>(reverseCrossfadeLength));
+                                leftReversed *= crossfadeGain;
+                                rightReversed *= crossfadeGain;
+                            }
+
+                            reversePlaybackPos++;
+                        }
 
                         // Simultaneously capture new audio
-                        reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
-                        reverseCaptureBufferRight[reverseCapturePos] = rightInput;
-                        reverseCapturePos++;
+                        if (reverseCapturePos < reverseLockedChunkSize)
+                        {
+                            reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
+                            reverseCaptureBufferRight[reverseCapturePos] = rightInput;
+                            reverseCapturePos++;
+                        }
 
                         // When both buffers complete, reverse and restart
-                        if (reversePlaybackPos >= reverseChunkSize && reverseCapturePos >= reverseChunkSize)
+                        if (reversePlaybackPos >= reverseLockedChunkSize && reverseCapturePos >= reverseLockedChunkSize)
                         {
                             // Reverse the newly captured audio
-                            for (int i = 0; i < reverseChunkSize; ++i)
+                            for (int i = 0; i < reverseLockedChunkSize; ++i)
                             {
-                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
-                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseChunkSize - 1 - i];
+                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseLockedChunkSize - 1 - i];
+                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseLockedChunkSize - 1 - i];
                             }
 
                             // Restart both playback and capture
                             reversePlaybackPos = 0;
                             reverseCapturePos = 0;
+
+                            // Update locked chunk size for next cycle with new desired size
+                            reverseLockedChunkSize = desiredReverseChunkSize;
                         }
                     }
                 }
@@ -842,35 +887,36 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 }
 
                 // Layer underwater sound effect (underwater preset only)
+                // Bubbles volume modulated by DELAYED signal envelope for natural breathing effect
                 if (underwaterMix > 0.0f && underwaterSoundSample.getNumSamples() > 0)
                 {
-                    // Debug: Log first time underwater effect is triggered
-                    if (!underwaterDebugLogged)
-                    {
-                        DBG(">>> UNDERWATER EFFECT ACTIVE: Mix=" + juce::String(underwaterMix) + ", Samples=" + juce::String(underwaterSoundSample.getNumSamples()));
-                        underwaterDebugLogged = true;
-                    }
+                    // Calculate signal level from DELAYED signal (average of left and right)
+                    // This makes bubbles fade with the delay tail
+                    float delayedLevel = (std::abs(leftDelayed) + std::abs(rightDelayed)) * 0.5f;
 
-                    // Calculate signal level from input signal (average of left and right)
-                    float inputLevel = (std::abs(leftInput) + std::abs(rightInput)) * 0.5f;
+                    // Envelope follower with attack/release for smooth breathing
+                    // Attack: 5ms (fast response), Release: 150ms (smooth fade)
+                    float attackCoeff = 0.95f;  // Fast attack
+                    float releaseCoeff = 0.998f; // Slow release for natural decay
 
-                    // Update underwater envelope with attack/release
-                    if (inputLevel > underwaterEnvelope)
-                        underwaterEnvelope = inputLevel + envelopeAttack * (underwaterEnvelope - inputLevel);
+                    if (delayedLevel > underwaterEnvelope)
+                        underwaterEnvelope = delayedLevel * (1.0f - attackCoeff) + underwaterEnvelope * attackCoeff;
                     else
-                        underwaterEnvelope = inputLevel + envelopeRelease * (underwaterEnvelope - inputLevel);
+                        underwaterEnvelope = delayedLevel * (1.0f - releaseCoeff) + underwaterEnvelope * releaseCoeff;
 
-                    // Read from underwater sound buffer (loop if necessary)
+                    // Read from underwater sound buffer (loop continuously)
                     int underwaterChannel = underwaterSoundSample.getNumChannels() > 0 ? 0 : 0;
                     float underwaterSample = underwaterSoundSample.getSample(underwaterChannel, underwaterSoundReadPos);
 
-                    // Apply envelope to underwater sound with +6dB boost for audibility
-                    underwaterSample *= underwaterEnvelope * 2.0f;
+                    // Apply envelope follower to bubble audio
+                    // Gain multiplier = envelope * underwater_mix * max_bubble_level
+                    float maxBubbleLevel = 0.6f; // Cap bubbles at 60% to prevent overpowering delay
+                    float bubbleGain = underwaterEnvelope * underwaterMix * maxBubbleLevel;
+                    underwaterSample *= bubbleGain;
 
-                    // Layer underwater sound with the input (not just delayed signal)
-                    // This creates the underwater ambience effect
-                    leftInput += underwaterSample * underwaterMix;
-                    rightInput += underwaterSample * underwaterMix;
+                    // Layer bubbles onto delayed signal (breathing with the delay tail)
+                    leftDelayed += underwaterSample;
+                    rightDelayed += underwaterSample;
 
                     // Increment and wrap read position
                     underwaterSoundReadPos++;
@@ -951,21 +997,30 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
 
                 if (reverseEnabled)
                 {
+                    // Lock chunk size at start of new capture to prevent mid-operation changes
+                    if (reverseIsCapturing && reverseCapturePos == 0)
+                    {
+                        reverseLockedChunkSize = desiredReverseChunkSize;
+                    }
+
                     if (reverseIsCapturing)
                     {
                         // Capture incoming dry audio
-                        reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
-                        reverseCaptureBufferRight[reverseCapturePos] = rightInput;
-                        reverseCapturePos++;
+                        if (reverseCapturePos < reverseLockedChunkSize)
+                        {
+                            reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
+                            reverseCaptureBufferRight[reverseCapturePos] = rightInput;
+                            reverseCapturePos++;
+                        }
 
                         // When capture buffer is full, reverse it
-                        if (reverseCapturePos >= reverseChunkSize)
+                        if (reverseCapturePos >= reverseLockedChunkSize)
                         {
                             // Reverse the captured audio into playback buffers
-                            for (int i = 0; i < reverseChunkSize; ++i)
+                            for (int i = 0; i < reverseLockedChunkSize; ++i)
                             {
-                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
-                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseChunkSize - 1 - i];
+                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseLockedChunkSize - 1 - i];
+                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseLockedChunkSize - 1 - i];
                             }
 
                             // Switch to playback mode
@@ -975,8 +1030,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                             reverseBufferReady = true;
                         }
 
-                        // Output reversed audio if available
-                        if (reverseBufferReady)
+                        // Output reversed audio if available (with crossfade)
+                        if (reverseBufferReady && reversePlaybackPos < reverseLockedChunkSize)
                         {
                             leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
                             rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
@@ -986,28 +1041,47 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     else
                     {
                         // Playback reversed audio while capturing new audio
-                        leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
-                        rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
-                        reversePlaybackPos++;
+                        if (reversePlaybackPos < reverseLockedChunkSize)
+                        {
+                            leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
+                            rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
+
+                            // Apply crossfade at the end of playback to smooth transition
+                            int crossfadeStart = reverseLockedChunkSize - reverseCrossfadeLength;
+                            if (reversePlaybackPos >= crossfadeStart)
+                            {
+                                float crossfadeGain = 1.0f - (static_cast<float>(reversePlaybackPos - crossfadeStart) / static_cast<float>(reverseCrossfadeLength));
+                                leftReversed *= crossfadeGain;
+                                rightReversed *= crossfadeGain;
+                            }
+
+                            reversePlaybackPos++;
+                        }
 
                         // Simultaneously capture new audio
-                        reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
-                        reverseCaptureBufferRight[reverseCapturePos] = rightInput;
-                        reverseCapturePos++;
+                        if (reverseCapturePos < reverseLockedChunkSize)
+                        {
+                            reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
+                            reverseCaptureBufferRight[reverseCapturePos] = rightInput;
+                            reverseCapturePos++;
+                        }
 
                         // When both buffers complete, reverse and restart
-                        if (reversePlaybackPos >= reverseChunkSize && reverseCapturePos >= reverseChunkSize)
+                        if (reversePlaybackPos >= reverseLockedChunkSize && reverseCapturePos >= reverseLockedChunkSize)
                         {
                             // Reverse the newly captured audio
-                            for (int i = 0; i < reverseChunkSize; ++i)
+                            for (int i = 0; i < reverseLockedChunkSize; ++i)
                             {
-                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
-                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseChunkSize - 1 - i];
+                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseLockedChunkSize - 1 - i];
+                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseLockedChunkSize - 1 - i];
                             }
 
                             // Restart both playback and capture
                             reversePlaybackPos = 0;
                             reverseCapturePos = 0;
+
+                            // Update locked chunk size for next cycle with new desired size
+                            reverseLockedChunkSize = desiredReverseChunkSize;
                         }
                     }
                 }
@@ -1071,19 +1145,28 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
 
             if (reverseEnabled)
             {
+                // Lock chunk size at start of new capture to prevent mid-operation changes
+                if (reverseIsCapturing && reverseCapturePos == 0)
+                {
+                    reverseLockedChunkSize = desiredReverseChunkSize;
+                }
+
                 if (reverseIsCapturing)
                 {
                     // Capture incoming dry audio
-                    reverseCaptureBufferLeft[reverseCapturePos] = input;
-                    reverseCapturePos++;
+                    if (reverseCapturePos < reverseLockedChunkSize)
+                    {
+                        reverseCaptureBufferLeft[reverseCapturePos] = input;
+                        reverseCapturePos++;
+                    }
 
                     // When capture buffer is full, reverse it
-                    if (reverseCapturePos >= reverseChunkSize)
+                    if (reverseCapturePos >= reverseLockedChunkSize)
                     {
                         // Reverse the captured audio into playback buffer
-                        for (int i = 0; i < reverseChunkSize; ++i)
+                        for (int i = 0; i < reverseLockedChunkSize; ++i)
                         {
-                            reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
+                            reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseLockedChunkSize - 1 - i];
                         }
 
                         // Switch to playback mode
@@ -1094,7 +1177,7 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     }
 
                     // Output reversed audio if available
-                    if (reverseBufferReady)
+                    if (reverseBufferReady && reversePlaybackPos < reverseLockedChunkSize)
                     {
                         reversed = reversePlaybackBufferLeft[reversePlaybackPos];
                         reversePlaybackPos++;
@@ -1103,25 +1186,43 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 else
                 {
                     // Playback reversed audio while capturing new audio
-                    reversed = reversePlaybackBufferLeft[reversePlaybackPos];
-                    reversePlaybackPos++;
+                    if (reversePlaybackPos < reverseLockedChunkSize)
+                    {
+                        reversed = reversePlaybackBufferLeft[reversePlaybackPos];
+
+                        // Apply crossfade at the end of playback to smooth transition
+                        int crossfadeStart = reverseLockedChunkSize - reverseCrossfadeLength;
+                        if (reversePlaybackPos >= crossfadeStart)
+                        {
+                            float crossfadeGain = 1.0f - (static_cast<float>(reversePlaybackPos - crossfadeStart) / static_cast<float>(reverseCrossfadeLength));
+                            reversed *= crossfadeGain;
+                        }
+
+                        reversePlaybackPos++;
+                    }
 
                     // Simultaneously capture new audio
-                    reverseCaptureBufferLeft[reverseCapturePos] = input;
-                    reverseCapturePos++;
+                    if (reverseCapturePos < reverseLockedChunkSize)
+                    {
+                        reverseCaptureBufferLeft[reverseCapturePos] = input;
+                        reverseCapturePos++;
+                    }
 
                     // When both buffers complete, reverse and restart
-                    if (reversePlaybackPos >= reverseChunkSize && reverseCapturePos >= reverseChunkSize)
+                    if (reversePlaybackPos >= reverseLockedChunkSize && reverseCapturePos >= reverseLockedChunkSize)
                     {
                         // Reverse the newly captured audio
-                        for (int i = 0; i < reverseChunkSize; ++i)
+                        for (int i = 0; i < reverseLockedChunkSize; ++i)
                         {
-                            reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
+                            reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseLockedChunkSize - 1 - i];
                         }
 
                         // Restart both playback and capture
                         reversePlaybackPos = 0;
                         reverseCapturePos = 0;
+
+                        // Update locked chunk size for next cycle with new desired size
+                        reverseLockedChunkSize = desiredReverseChunkSize;
                     }
                 }
             }
@@ -1236,10 +1337,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
         juce::NormalisableRange<float>(20.0f, 1000.0f, 1.0f, 0.3f),
         20.0f));
 
-    // High Cut (lowpass filter) - 1000 Hz to 20000 Hz
+    // High Cut (lowpass filter) - 100 Hz to 20000 Hz
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "high_cut", "High Cut",
-        juce::NormalisableRange<float>(1000.0f, 20000.0f, 1.0f, 0.3f),
+        juce::NormalisableRange<float>(100.0f, 20000.0f, 1.0f, 0.3f),
         20000.0f));
 
     // Wow (slow pitch modulation) - 0 to 100%
@@ -1341,9 +1442,9 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
-        parameters.getParameter("low_cut")->setValueNotifyingHost(0.0136f); // 290 Hz (high pass - cuts low end)
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0044f); // 4000 Hz (low pass - cuts high end)
+        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 100-20000 Hz, skew 0.3)
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.037f); // 385 Hz (high pass - cuts low end)
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.686f); // 5550 Hz (low pass - cuts high end)
         parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         break;
@@ -1357,8 +1458,8 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        parameters.getParameter("low_cut")->setValueNotifyingHost(0.0f); // 20 Hz (minimum - keep bass)
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.05f); // ~1500 Hz (heavy high cut)
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.00035f); // 110 Hz (high pass - removes very low frequencies)
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0000064f); // 650 Hz (low pass - dark, muffled underwater sound)
         parameters.getParameter("wow")->setValueNotifyingHost(0.05f); // 5%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.05f); // 5%
         parameters.getParameter("underwater_mix")->setValueNotifyingHost(0.50f); // 50% underwater sound
@@ -1373,9 +1474,9 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
+        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 100-20000 Hz, skew 0.3)
         parameters.getParameter("low_cut")->setValueNotifyingHost(0.00005f); // 55 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0034f); // 4700 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.643f); // 4700 Hz
         parameters.getParameter("wow")->setValueNotifyingHost(0.16f); // 16% (tape warble)
         parameters.getParameter("flutter")->setValueNotifyingHost(0.05f); // 5%
         parameters.getParameter("mechanical_noise")->setValueNotifyingHost(0.30f); // 30% mechanical noise
@@ -1390,9 +1491,9 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
+        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 100-20000 Hz, skew 0.3)
         parameters.getParameter("low_cut")->setValueNotifyingHost(0.0136f); // 290 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0015f); // 3550 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.595f); // 3550 Hz
         parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("radio_noise")->setValueNotifyingHost(0.0f); // 0% (off by default)
