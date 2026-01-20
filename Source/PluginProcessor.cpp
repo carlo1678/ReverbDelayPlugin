@@ -1236,10 +1236,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout ReverbDelayPluginAudioProces
         juce::NormalisableRange<float>(20.0f, 1000.0f, 1.0f, 0.3f),
         20.0f));
 
-    // High Cut (lowpass filter) - 1000 Hz to 20000 Hz
+    // High Cut (lowpass filter) - 100 Hz to 20000 Hz
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         "high_cut", "High Cut",
-        juce::NormalisableRange<float>(1000.0f, 20000.0f, 1.0f, 0.3f),
+        juce::NormalisableRange<float>(100.0f, 20000.0f, 1.0f, 0.3f),
         20000.0f));
 
     // Wow (slow pitch modulation) - 0 to 100%
@@ -1341,9 +1341,9 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
+        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 100-20000 Hz, skew 0.3)
         parameters.getParameter("low_cut")->setValueNotifyingHost(0.037f); // 385 Hz (high pass - cuts low end)
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0085f); // 5550 Hz (low pass - cuts high end)
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.686f); // 5550 Hz (low pass - cuts high end)
         parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         break;
@@ -1358,7 +1358,7 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("low_cut")->setValueNotifyingHost(0.0f); // 20 Hz (minimum - keep bass)
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.05f); // ~1500 Hz (heavy high cut)
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.416f); // 1500 Hz (heavy high cut)
         parameters.getParameter("wow")->setValueNotifyingHost(0.05f); // 5%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.05f); // 5%
         parameters.getParameter("underwater_mix")->setValueNotifyingHost(0.50f); // 50% underwater sound
@@ -1373,9 +1373,9 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
+        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 100-20000 Hz, skew 0.3)
         parameters.getParameter("low_cut")->setValueNotifyingHost(0.00005f); // 55 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0034f); // 4700 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.643f); // 4700 Hz
         parameters.getParameter("wow")->setValueNotifyingHost(0.16f); // 16% (tape warble)
         parameters.getParameter("flutter")->setValueNotifyingHost(0.05f); // 5%
         parameters.getParameter("mechanical_noise")->setValueNotifyingHost(0.30f); // 30% mechanical noise
@@ -1390,9 +1390,9 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("reverse_delay")->setValueNotifyingHost(0.0f); // Off
         parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
-        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
+        // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 100-20000 Hz, skew 0.3)
         parameters.getParameter("low_cut")->setValueNotifyingHost(0.0136f); // 290 Hz
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0015f); // 3550 Hz
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.595f); // 3550 Hz
         parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("radio_noise")->setValueNotifyingHost(0.0f); // 0% (off by default)
