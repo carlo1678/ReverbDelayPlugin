@@ -1342,8 +1342,8 @@ void ReverbDelayPluginAudioProcessor::loadPreset(int presetIndex)
         parameters.getParameter("reverse_wet")->setValueNotifyingHost(50.0f); // 50% reverse mix
         parameters.getParameter("ping_pong")->setValueNotifyingHost(0.0f); // Off
         // Normalized values for skewed ranges (low_cut: 20-1000 Hz, high_cut: 1000-20000 Hz, skew 0.3)
-        parameters.getParameter("low_cut")->setValueNotifyingHost(0.0136f); // 290 Hz (high pass - cuts low end)
-        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0044f); // 4000 Hz (low pass - cuts high end)
+        parameters.getParameter("low_cut")->setValueNotifyingHost(0.037f); // 385 Hz (high pass - cuts low end)
+        parameters.getParameter("high_cut")->setValueNotifyingHost(0.0085f); // 5550 Hz (low pass - cuts high end)
         parameters.getParameter("wow")->setValueNotifyingHost(0.0f); // 0%
         parameters.getParameter("flutter")->setValueNotifyingHost(0.0f); // 0%
         break;
