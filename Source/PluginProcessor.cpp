@@ -169,8 +169,13 @@ void ReverbDelayPluginAudioProcessor::prepareToPlay(double sampleRate, int sampl
     reversePlaybackBufferRight.resize(maxReverseSamples, 0.0f);
     reverseCapturePos = 0;
     reversePlaybackPos = 0;
+    reverseChunkSize = 0;
+    reverseLockedChunkSize = 0;
     reverseIsCapturing = true;
     reverseBufferReady = false;
+
+    // Set crossfade length to 15ms to avoid clicks/pops
+    reverseCrossfadeLength = static_cast<int>(sampleRate * 0.015); // 15ms crossfade
 
     // Try to get initial BPM from host on startup
     // This ensures tempo-synced delays work correctly from the first note
@@ -438,7 +443,9 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         pendulumFreq = static_cast<float>(beatsPerSecond / beatsPerCycle);
     }
 
-    // Calculate reverse chunk size (always 1/2 note, tempo-synced)
+    // Calculate desired reverse chunk size (always 1/2 note, tempo-synced)
+    // Don't update locked size mid-operation - only when starting new capture
+    int desiredReverseChunkSize = 0;
     if (reverseEnabled)
     {
         double bpm = lastKnownBpm;
@@ -456,14 +463,23 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         // Calculate samples for 1/2 note: (60 / BPM) * sampleRate * 2 beats
         double secondsPerBeat = 60.0 / bpm;
         double secondsPerHalfNote = secondsPerBeat * 2.0; // 2 beats = 1/2 note in 4/4 time
-        reverseChunkSize = static_cast<int>(secondsPerHalfNote * lastSampleRate);
+        desiredReverseChunkSize = static_cast<int>(secondsPerHalfNote * lastSampleRate);
 
         // Clamp to buffer size
         int maxSize = static_cast<int>(reverseCaptureBufferLeft.size());
-        if (reverseChunkSize > maxSize)
-            reverseChunkSize = maxSize;
-        if (reverseChunkSize < 1)
-            reverseChunkSize = 1;
+        if (desiredReverseChunkSize > maxSize)
+            desiredReverseChunkSize = maxSize;
+        if (desiredReverseChunkSize < reverseCrossfadeLength * 2)
+            desiredReverseChunkSize = reverseCrossfadeLength * 2; // Minimum size for crossfading
+    }
+    else
+    {
+        // Reset reverse state when disabled
+        reverseIsCapturing = true;
+        reverseCapturePos = 0;
+        reversePlaybackPos = 0;
+        reverseBufferReady = false;
+        reverseLockedChunkSize = 0;
     }
 
     // Process stereo channels
@@ -664,21 +680,30 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
 
                 if (reverseEnabled)
                 {
+                    // Lock chunk size at start of new capture to prevent mid-operation changes
+                    if (reverseIsCapturing && reverseCapturePos == 0)
+                    {
+                        reverseLockedChunkSize = desiredReverseChunkSize;
+                    }
+
                     if (reverseIsCapturing)
                     {
                         // Capture incoming dry audio
-                        reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
-                        reverseCaptureBufferRight[reverseCapturePos] = rightInput;
-                        reverseCapturePos++;
+                        if (reverseCapturePos < reverseLockedChunkSize)
+                        {
+                            reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
+                            reverseCaptureBufferRight[reverseCapturePos] = rightInput;
+                            reverseCapturePos++;
+                        }
 
                         // When capture buffer is full, reverse it
-                        if (reverseCapturePos >= reverseChunkSize)
+                        if (reverseCapturePos >= reverseLockedChunkSize)
                         {
                             // Reverse the captured audio into playback buffers
-                            for (int i = 0; i < reverseChunkSize; ++i)
+                            for (int i = 0; i < reverseLockedChunkSize; ++i)
                             {
-                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
-                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseChunkSize - 1 - i];
+                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseLockedChunkSize - 1 - i];
+                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseLockedChunkSize - 1 - i];
                             }
 
                             // Switch to playback mode
@@ -688,8 +713,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                             reverseBufferReady = true;
                         }
 
-                        // Output reversed audio if available
-                        if (reverseBufferReady)
+                        // Output reversed audio if available (with crossfade)
+                        if (reverseBufferReady && reversePlaybackPos < reverseLockedChunkSize)
                         {
                             leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
                             rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
@@ -699,28 +724,47 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     else
                     {
                         // Playback reversed audio while capturing new audio
-                        leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
-                        rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
-                        reversePlaybackPos++;
+                        if (reversePlaybackPos < reverseLockedChunkSize)
+                        {
+                            leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
+                            rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
+
+                            // Apply crossfade at the end of playback to smooth transition
+                            int crossfadeStart = reverseLockedChunkSize - reverseCrossfadeLength;
+                            if (reversePlaybackPos >= crossfadeStart)
+                            {
+                                float crossfadeGain = 1.0f - (static_cast<float>(reversePlaybackPos - crossfadeStart) / static_cast<float>(reverseCrossfadeLength));
+                                leftReversed *= crossfadeGain;
+                                rightReversed *= crossfadeGain;
+                            }
+
+                            reversePlaybackPos++;
+                        }
 
                         // Simultaneously capture new audio
-                        reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
-                        reverseCaptureBufferRight[reverseCapturePos] = rightInput;
-                        reverseCapturePos++;
+                        if (reverseCapturePos < reverseLockedChunkSize)
+                        {
+                            reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
+                            reverseCaptureBufferRight[reverseCapturePos] = rightInput;
+                            reverseCapturePos++;
+                        }
 
                         // When both buffers complete, reverse and restart
-                        if (reversePlaybackPos >= reverseChunkSize && reverseCapturePos >= reverseChunkSize)
+                        if (reversePlaybackPos >= reverseLockedChunkSize && reverseCapturePos >= reverseLockedChunkSize)
                         {
                             // Reverse the newly captured audio
-                            for (int i = 0; i < reverseChunkSize; ++i)
+                            for (int i = 0; i < reverseLockedChunkSize; ++i)
                             {
-                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
-                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseChunkSize - 1 - i];
+                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseLockedChunkSize - 1 - i];
+                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseLockedChunkSize - 1 - i];
                             }
 
                             // Restart both playback and capture
                             reversePlaybackPos = 0;
                             reverseCapturePos = 0;
+
+                            // Update locked chunk size for next cycle with new desired size
+                            reverseLockedChunkSize = desiredReverseChunkSize;
                         }
                     }
                 }
@@ -951,21 +995,30 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
 
                 if (reverseEnabled)
                 {
+                    // Lock chunk size at start of new capture to prevent mid-operation changes
+                    if (reverseIsCapturing && reverseCapturePos == 0)
+                    {
+                        reverseLockedChunkSize = desiredReverseChunkSize;
+                    }
+
                     if (reverseIsCapturing)
                     {
                         // Capture incoming dry audio
-                        reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
-                        reverseCaptureBufferRight[reverseCapturePos] = rightInput;
-                        reverseCapturePos++;
+                        if (reverseCapturePos < reverseLockedChunkSize)
+                        {
+                            reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
+                            reverseCaptureBufferRight[reverseCapturePos] = rightInput;
+                            reverseCapturePos++;
+                        }
 
                         // When capture buffer is full, reverse it
-                        if (reverseCapturePos >= reverseChunkSize)
+                        if (reverseCapturePos >= reverseLockedChunkSize)
                         {
                             // Reverse the captured audio into playback buffers
-                            for (int i = 0; i < reverseChunkSize; ++i)
+                            for (int i = 0; i < reverseLockedChunkSize; ++i)
                             {
-                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
-                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseChunkSize - 1 - i];
+                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseLockedChunkSize - 1 - i];
+                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseLockedChunkSize - 1 - i];
                             }
 
                             // Switch to playback mode
@@ -975,8 +1028,8 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                             reverseBufferReady = true;
                         }
 
-                        // Output reversed audio if available
-                        if (reverseBufferReady)
+                        // Output reversed audio if available (with crossfade)
+                        if (reverseBufferReady && reversePlaybackPos < reverseLockedChunkSize)
                         {
                             leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
                             rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
@@ -986,28 +1039,47 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     else
                     {
                         // Playback reversed audio while capturing new audio
-                        leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
-                        rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
-                        reversePlaybackPos++;
+                        if (reversePlaybackPos < reverseLockedChunkSize)
+                        {
+                            leftReversed = reversePlaybackBufferLeft[reversePlaybackPos];
+                            rightReversed = reversePlaybackBufferRight[reversePlaybackPos];
+
+                            // Apply crossfade at the end of playback to smooth transition
+                            int crossfadeStart = reverseLockedChunkSize - reverseCrossfadeLength;
+                            if (reversePlaybackPos >= crossfadeStart)
+                            {
+                                float crossfadeGain = 1.0f - (static_cast<float>(reversePlaybackPos - crossfadeStart) / static_cast<float>(reverseCrossfadeLength));
+                                leftReversed *= crossfadeGain;
+                                rightReversed *= crossfadeGain;
+                            }
+
+                            reversePlaybackPos++;
+                        }
 
                         // Simultaneously capture new audio
-                        reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
-                        reverseCaptureBufferRight[reverseCapturePos] = rightInput;
-                        reverseCapturePos++;
+                        if (reverseCapturePos < reverseLockedChunkSize)
+                        {
+                            reverseCaptureBufferLeft[reverseCapturePos] = leftInput;
+                            reverseCaptureBufferRight[reverseCapturePos] = rightInput;
+                            reverseCapturePos++;
+                        }
 
                         // When both buffers complete, reverse and restart
-                        if (reversePlaybackPos >= reverseChunkSize && reverseCapturePos >= reverseChunkSize)
+                        if (reversePlaybackPos >= reverseLockedChunkSize && reverseCapturePos >= reverseLockedChunkSize)
                         {
                             // Reverse the newly captured audio
-                            for (int i = 0; i < reverseChunkSize; ++i)
+                            for (int i = 0; i < reverseLockedChunkSize; ++i)
                             {
-                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
-                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseChunkSize - 1 - i];
+                                reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseLockedChunkSize - 1 - i];
+                                reversePlaybackBufferRight[i] = reverseCaptureBufferRight[reverseLockedChunkSize - 1 - i];
                             }
 
                             // Restart both playback and capture
                             reversePlaybackPos = 0;
                             reverseCapturePos = 0;
+
+                            // Update locked chunk size for next cycle with new desired size
+                            reverseLockedChunkSize = desiredReverseChunkSize;
                         }
                     }
                 }
@@ -1071,19 +1143,28 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
 
             if (reverseEnabled)
             {
+                // Lock chunk size at start of new capture to prevent mid-operation changes
+                if (reverseIsCapturing && reverseCapturePos == 0)
+                {
+                    reverseLockedChunkSize = desiredReverseChunkSize;
+                }
+
                 if (reverseIsCapturing)
                 {
                     // Capture incoming dry audio
-                    reverseCaptureBufferLeft[reverseCapturePos] = input;
-                    reverseCapturePos++;
+                    if (reverseCapturePos < reverseLockedChunkSize)
+                    {
+                        reverseCaptureBufferLeft[reverseCapturePos] = input;
+                        reverseCapturePos++;
+                    }
 
                     // When capture buffer is full, reverse it
-                    if (reverseCapturePos >= reverseChunkSize)
+                    if (reverseCapturePos >= reverseLockedChunkSize)
                     {
                         // Reverse the captured audio into playback buffer
-                        for (int i = 0; i < reverseChunkSize; ++i)
+                        for (int i = 0; i < reverseLockedChunkSize; ++i)
                         {
-                            reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
+                            reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseLockedChunkSize - 1 - i];
                         }
 
                         // Switch to playback mode
@@ -1094,7 +1175,7 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                     }
 
                     // Output reversed audio if available
-                    if (reverseBufferReady)
+                    if (reverseBufferReady && reversePlaybackPos < reverseLockedChunkSize)
                     {
                         reversed = reversePlaybackBufferLeft[reversePlaybackPos];
                         reversePlaybackPos++;
@@ -1103,25 +1184,43 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                 else
                 {
                     // Playback reversed audio while capturing new audio
-                    reversed = reversePlaybackBufferLeft[reversePlaybackPos];
-                    reversePlaybackPos++;
+                    if (reversePlaybackPos < reverseLockedChunkSize)
+                    {
+                        reversed = reversePlaybackBufferLeft[reversePlaybackPos];
+
+                        // Apply crossfade at the end of playback to smooth transition
+                        int crossfadeStart = reverseLockedChunkSize - reverseCrossfadeLength;
+                        if (reversePlaybackPos >= crossfadeStart)
+                        {
+                            float crossfadeGain = 1.0f - (static_cast<float>(reversePlaybackPos - crossfadeStart) / static_cast<float>(reverseCrossfadeLength));
+                            reversed *= crossfadeGain;
+                        }
+
+                        reversePlaybackPos++;
+                    }
 
                     // Simultaneously capture new audio
-                    reverseCaptureBufferLeft[reverseCapturePos] = input;
-                    reverseCapturePos++;
+                    if (reverseCapturePos < reverseLockedChunkSize)
+                    {
+                        reverseCaptureBufferLeft[reverseCapturePos] = input;
+                        reverseCapturePos++;
+                    }
 
                     // When both buffers complete, reverse and restart
-                    if (reversePlaybackPos >= reverseChunkSize && reverseCapturePos >= reverseChunkSize)
+                    if (reversePlaybackPos >= reverseLockedChunkSize && reverseCapturePos >= reverseLockedChunkSize)
                     {
                         // Reverse the newly captured audio
-                        for (int i = 0; i < reverseChunkSize; ++i)
+                        for (int i = 0; i < reverseLockedChunkSize; ++i)
                         {
-                            reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseChunkSize - 1 - i];
+                            reversePlaybackBufferLeft[i] = reverseCaptureBufferLeft[reverseLockedChunkSize - 1 - i];
                         }
 
                         // Restart both playback and capture
                         reversePlaybackPos = 0;
                         reverseCapturePos = 0;
+
+                        // Update locked chunk size for next cycle with new desired size
+                        reverseLockedChunkSize = desiredReverseChunkSize;
                     }
                 }
             }

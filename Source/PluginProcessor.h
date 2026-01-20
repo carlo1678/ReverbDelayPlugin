@@ -137,8 +137,10 @@ private:
     int reverseCapturePos = 0;
     int reversePlaybackPos = 0;
     int reverseChunkSize = 0;
+    int reverseLockedChunkSize = 0;  // Locked size for current cycle to prevent mid-operation changes
     bool reverseIsCapturing = true;
     bool reverseBufferReady = false;
+    int reverseCrossfadeLength = 0;  // Length of crossfade in samples
 
     // Telephone noise sample buffer and playback position
     juce::AudioBuffer<float> telephoneNoiseSample;
