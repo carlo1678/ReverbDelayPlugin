@@ -696,11 +696,11 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                             }
 
                             // Apply fade-in envelope to create reverse swell
-                            // Starts quiet and swells up to loud (like reverse cymbal)
+                            // Starts very quiet and swells up gradually to loud (like reverse cymbal)
                             for (int i = 0; i < reverseChunkSize; ++i)
                             {
                                 float progress = static_cast<float>(i) / static_cast<float>(reverseChunkSize);
-                                float fadeGain = std::pow(progress, 2.0f); // Quadratic fade-in (swell up)
+                                float fadeGain = std::pow(progress, 3.0f); // Cubic fade-in for smooth, gradual swell
                                 reversePlaybackBufferLeft[i] *= fadeGain;
                                 reversePlaybackBufferRight[i] *= fadeGain;
                             }
@@ -992,11 +992,11 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                             }
 
                             // Apply fade-in envelope to create reverse swell
-                            // Starts quiet and swells up to loud (like reverse cymbal)
+                            // Starts very quiet and swells up gradually to loud (like reverse cymbal)
                             for (int i = 0; i < reverseChunkSize; ++i)
                             {
                                 float progress = static_cast<float>(i) / static_cast<float>(reverseChunkSize);
-                                float fadeGain = std::pow(progress, 2.0f); // Quadratic fade-in (swell up)
+                                float fadeGain = std::pow(progress, 3.0f); // Cubic fade-in for smooth, gradual swell
                                 reversePlaybackBufferLeft[i] *= fadeGain;
                                 reversePlaybackBufferRight[i] *= fadeGain;
                             }
@@ -1118,11 +1118,11 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
                         }
 
                         // Apply fade-in envelope to create reverse swell
-                        // Starts quiet and swells up to loud (like reverse cymbal)
+                        // Starts very quiet and swells up gradually to loud (like reverse cymbal)
                         for (int i = 0; i < reverseChunkSize; ++i)
                         {
                             float progress = static_cast<float>(i) / static_cast<float>(reverseChunkSize);
-                            float fadeGain = std::pow(progress, 2.0f); // Quadratic fade-in (swell up)
+                            float fadeGain = std::pow(progress, 3.0f); // Cubic fade-in for smooth, gradual swell
                             reversePlaybackBufferLeft[i] *= fadeGain;
                         }
 
