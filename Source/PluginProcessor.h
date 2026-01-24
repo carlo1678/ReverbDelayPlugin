@@ -144,7 +144,7 @@ private:
     std::vector<float> reversePlaybackBufferRight;
     int reverseCapturePos = 0;
     int reversePlaybackPos = 0;
-    int reverseChunkSize = 0;  // Samples in 1/2 note at current BPM
+    int reverseChunkSize = 0;  // Samples in 1/4 note at current BPM
 
     // Telephone noise sample buffer and playback position
     juce::AudioBuffer<float> telephoneNoiseSample;

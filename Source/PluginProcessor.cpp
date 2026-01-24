@@ -161,7 +161,7 @@ void ReverbDelayPluginAudioProcessor::prepareToPlay(double sampleRate, int sampl
     // Store sample rate for filter coefficient updates
     lastSampleRate = sampleRate;
 
-    // Prepare one-shot reverse effect buffers (1/2 note at 120 BPM default, max 4 seconds for safety)
+    // Prepare one-shot reverse effect buffers (1/4 note chunks, max 4 seconds for safety)
     int maxReverseSamples = static_cast<int>(sampleRate * 4.0); // 4 seconds max
     reverseCaptureBufferLeft.resize(maxReverseSamples, 0.0f);
     reverseCaptureBufferRight.resize(maxReverseSamples, 0.0f);
@@ -438,7 +438,7 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         pendulumFreq = static_cast<float>(beatsPerSecond / beatsPerCycle);
     }
 
-    // Calculate reverse chunk size (1/2 note at current BPM)
+    // Calculate reverse chunk size (1/4 note at current BPM - creates swell every 1/2 note)
     // Update chunk size at start of CAPTURING state only
     if (reverseEnabled && reverseState == ReverseState::CAPTURING && reverseCapturePos == 0)
     {
@@ -454,10 +454,11 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
             }
         }
 
-        // Calculate samples for 1/2 note: (60 / BPM) * sampleRate * 2 beats
+        // Calculate samples for 1/4 note: (60 / BPM) * sampleRate * 1 beat
+        // This creates a swell every 1/2 note (1 beat capture + 1 beat playback = 2 beats total)
         double secondsPerBeat = 60.0 / bpm;
-        double secondsPerHalfNote = secondsPerBeat * 2.0; // 2 beats = 1/2 note in 4/4 time
-        reverseChunkSize = static_cast<int>(secondsPerHalfNote * lastSampleRate);
+        double secondsPerQuarterNote = secondsPerBeat; // 1 beat = 1/4 note in 4/4 time
+        reverseChunkSize = static_cast<int>(secondsPerQuarterNote * lastSampleRate);
 
         // Clamp to buffer size
         int maxSize = static_cast<int>(reverseCaptureBufferLeft.size());
