@@ -438,12 +438,36 @@ void ReverbDelayPluginAudioProcessor::processBlock (juce::AudioBuffer<float>& bu
         pendulumFreq = static_cast<float>(beatsPerSecond / beatsPerCycle);
     }
 
+    // Detect DAW transport state (play/stop) and reset reverse effect when playback restarts
+    bool isPlaying = false;
+    auto playHead = getPlayHead();
+    if (playHead != nullptr)
+    {
+        juce::Optional<juce::AudioPlayHead::PositionInfo> posInfo = playHead->getPosition();
+        if (posInfo.hasValue() && posInfo->getIsPlaying())
+        {
+            isPlaying = true;
+        }
+    }
+
+    // Reset reverse effect when playback starts (transition from stopped to playing)
+    if (reverseEnabled && isPlaying && !wasPlayingLastBuffer)
+    {
+        // Playback just started - reset reverse effect to sync with DAW
+        reverseState = ReverseState::CAPTURING;
+        reverseCapturePos = 0;
+        reversePlaybackPos = 0;
+    }
+
+    // Update transport state for next buffer
+    wasPlayingLastBuffer = isPlaying;
+
     // Calculate reverse chunk size (1/4 note at current BPM - creates swell every 1/2 note)
     // Update chunk size at start of CAPTURING state only
     if (reverseEnabled && reverseState == ReverseState::CAPTURING && reverseCapturePos == 0)
     {
         double bpm = lastKnownBpm;
-        auto playHead = getPlayHead();
+        // Reuse playHead from transport detection above
         if (playHead != nullptr)
         {
             juce::Optional<juce::AudioPlayHead::PositionInfo> posInfo = playHead->getPosition();

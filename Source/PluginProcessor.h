@@ -145,6 +145,7 @@ private:
     int reverseCapturePos = 0;
     int reversePlaybackPos = 0;
     int reverseChunkSize = 0;  // Samples in 1/4 note at current BPM
+    bool wasPlayingLastBuffer = false;  // Track transport state to detect stop/start
 
     // Telephone noise sample buffer and playback position
     juce::AudioBuffer<float> telephoneNoiseSample;
